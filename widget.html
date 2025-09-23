@@ -19,17 +19,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
-// [CFG_TOP] ———— Edit these to your n8n webhooks
+// [CFG_TOP] ———— Read from querystring
+const params = new URLSearchParams(window.location.search);
 const CFG = {
-  listUrl: "/api/webhooks/conversations/list", // POST {page, pageSize}
-  threadUrl: "/api/webhooks/conversations/thread", // POST {conversationId, before?, after?}
-  sendUrl: "/api/webhooks/conversations/send", // POST {conversationId, text}
+  listUrl: params.get("listUrl")!,
+  threadUrl: params.get("threadUrl")!,
+  sendUrl: params.get("sendUrl")!,
+  locationId: params.get("locationId")!,
+  authHeader: params.get("authHeader") || "Authorization",
+  authToken: params.get("authToken") || "",
   pageSize: 20,
-  // Brand/theme (defaults chosen to look like iMessage but with VisQuanta twist)
   color: {
-    primary: "#5E6AD2", // outgoing bubble fill
+    primary: "#5E6AD2",
     primaryText: "#ffffff",
-    incoming: "#E9ECEF", // incoming bubble fill
+    incoming: "#E9ECEF",
     incomingText: "#111827",
     accent: "#111827",
   },
@@ -37,36 +40,15 @@ const CFG = {
 
 // [SCHEMA] ———— Contracts you can mirror in n8n
 // LIST (POST listUrl)
-// req: { page: number, pageSize: number }
-// res: {
-//   page: number,
-//   totalPages: number,
-//   items: Array<{
-//     id: string,
-//     name: string,              // e.g., contact name
-//     lastLine: string,          // first line of most recent message
-//     updatedAt: string,         // ISO datetime
-//     unreadCount?: number,
-//   }>
-// }
+// req: { locationId: string, page: number, pageSize: number }
+// res: { page:number, totalPages:number, items: Array<{ id:string, name:string, lastLine:string, updatedAt:string, unreadCount?:number }> }
 // THREAD (POST threadUrl)
-// req: { conversationId: string, before?: string, after?: string }
-// res: {
-//   conversationId: string,
-//   participants: Array<{ id: string, name: string }>,
-//   messages: Array<{
-//     id: string,
-//     authorId: string,
-//     authorName?: string,
-//     text: string,
-//     sentAt: string, // ISO datetime
-//   }>
-// }
+// req: { locationId: string, conversationId:string, before?:string, after?:string }
+// res: { conversationId:string, participants:Array<{id:string, name:string}>, messages:Array<{id:string, authorId:string, authorName?:string, text:string, sentAt:string}> }
 // SEND (POST sendUrl)
-// req: { conversationId: string, text: string }
-// res: { ok: true, messageId: string, sentAt: string }
+// req: { locationId:string, conversationId:string, text:string }
+// res: { ok:true, messageId:string, sentAt:string }
 
-// ———— Types
 interface ListItem { id: string; name: string; lastLine: string; updatedAt: string; unreadCount?: number }
 interface ThreadMessage { id: string; authorId: string; authorName?: string; text: string; sentAt: string }
 interface ThreadRes { conversationId: string; participants: Array<{id: string; name: string}>; messages: ThreadMessage[] }
@@ -88,9 +70,11 @@ function timeAgo(iso: string) {
 async function postJSON<T>(url: string, body: any) : Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    credentials: "include", // carry cookies if your auth needs it
+    headers: {
+      "Content-Type": "application/json",
+      [CFG.authHeader]: CFG.authToken,
+    },
+    body: JSON.stringify({ locationId: CFG.locationId, ...body }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} on ${url}`);
   return res.json();
@@ -110,16 +94,14 @@ export default function ConversationsUI() {
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const meId = "me"; // map to your agent/user id in n8n response
+  const meId = "me";
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   useEffect(() => { scrollToBottom(); }, [thread?.messages.length]);
 
-  // On load: fetch page 1
   useEffect(() => { (async () => { await fetchList(1); })(); }, []);
 
-  // [LIST_FETCH]
   async function fetchList(nextPage: number) {
     try {
       setListLoading(true); setListError(null);
@@ -134,13 +116,11 @@ export default function ConversationsUI() {
     }
   }
 
-  // [THREAD_FETCH]
   async function fetchThread(conversationId: string) {
     try {
       setThreadLoading(true); setThreadError(null);
       setActiveId(conversationId);
       const data = await postJSON<ThreadRes>(CFG.threadUrl, { conversationId });
-      // sort by sentAt asc to render oldest first
       data.messages.sort((a,b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
       setThread(data);
     } catch (e: any) {
@@ -150,13 +130,11 @@ export default function ConversationsUI() {
     }
   }
 
-  // [SEND_MSG]
   async function sendMessage() {
     const text = draft.trim();
     if (!activeId || !text) return;
     setSending(true);
 
-    // optimistic UI
     const optimistic: ThreadMessage = {
       id: `optimistic-${Date.now()}`,
       authorId: meId,
@@ -169,11 +147,9 @@ export default function ConversationsUI() {
     scrollToBottom();
 
     try {
-      const res = await postJSON<{ ok: boolean; messageId: string; sentAt: string }>(CFG.sendUrl, { conversationId: activeId, text });
-      // Reconcile optimistic id (simple approach: refetch thread)
+      await postJSON<{ ok: boolean; messageId: string; sentAt: string }>(CFG.sendUrl, { conversationId: activeId, text });
       await fetchThread(activeId);
     } catch (e) {
-      // rollback on error
       setThread(prev => prev ? { ...prev, messages: prev.messages.filter(m => m.id !== optimistic.id) } : prev);
       alert((e as any)?.message ?? "Failed to send message");
     } finally {
@@ -211,7 +187,6 @@ export default function ConversationsUI() {
           <div className="px-3 pb-3">
             <Input placeholder="Search (client side)" onChange={(e) => {
               const q = e.target.value.toLowerCase();
-              // simple client filter; for server search, wire another webhook
               const base = (window as any).__listBackup ?? items;
               if (!(window as any).__listBackup) (window as any).__listBackup = items;
               const filtered = base.filter((i: ListItem) => i.name.toLowerCase().includes(q) || i.lastLine.toLowerCase().includes(q));
@@ -311,7 +286,6 @@ export default function ConversationsUI() {
             </ScrollArea>
           </div>
 
-          {/* Composer */}
           <div className="mt-3 border rounded-xl p-2">
             <Textarea
               value={draft}
@@ -332,7 +306,6 @@ export default function ConversationsUI() {
         </CardContent>
       </Card>
 
-      {/* [STYLE] – iPhone-like bubbles via CSS vars */}
       <style>{`
         .bubble-outgoing { background: ${CFG.color.primary}; color: ${CFG.color.primaryText}; border-top-right-radius: .4rem; }
         .bubble-incoming { background: ${CFG.color.incoming}; color: ${CFG.color.incomingText}; border-top-left-radius: .4rem; }
@@ -342,19 +315,3 @@ export default function ConversationsUI() {
 }
 
 // ========================= VISQUANTA MESSAGING – END =========================
-
-// ———— n8n Webhook Notes (no leading '=' in expressions)
-// 1) LIST Webhook
-//    Expect: { "page": {{$json["page"]}}, "pageSize": {{$json["pageSize"]}} }
-//    Return JSON exactly as [SCHEMA] for LIST.
-//
-// 2) THREAD Webhook
-//    Expect: { "conversationId": {{$json["conversationId"]}} }
-//    Return JSON exactly as [SCHEMA] for THREAD.
-//
-// 3) SEND Webhook
-//    Expect: { "conversationId": {{$json["conversationId"]}}, "text": {{$json["text"]}} }
-//    Return: { ok: true, messageId: "...", sentAt: new Date().toISOString() }
-//
-// CORS/Headers: if you need auth, add a middleware that sets cookies or injects an Authorization header in fetch above.
-// Retry/backoff: productionize by wrapping postJSON with retry on 429/5xx.
