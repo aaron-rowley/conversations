@@ -9,25 +9,23 @@
     :root{
       --vq-bg:#0b0b10; --vq-card:#121218; --vq-border:#1c1c25;
       --vq-text:#e9e9f2; --vq-muted:#a0a6b3;
-      --vq-accent:#ff7a00; --vq-accent-600:#ff8b24; --vq-accent-700:#ff6d00;
+      --vq-accent:#ff7a00;
       --vq-bubble-out-start:#ff7a00; --vq-bubble-out-end:#ff922b; --vq-bubble-out-text:#0b0b10;
       --vq-bubble-in:#1b1b24; --vq-bubble-in-text:#e9e9f2;
       --vq-hover:#161621; --vq-glow:0 8px 24px rgba(255,122,0,.18);
     }
     *{ scrollbar-width:thin; scrollbar-color:#2a2a36 transparent }
-    *::-webkit-scrollbar{ width:10px; height:10px } *::-webkit-scrollbar-thumb{ background:#272732; border-radius:999px } *::-webkit-scrollbar-track{ background:transparent }
-
+    *::-webkit-scrollbar{ width:10px; height:10px } *::-webkit-scrollbar-thumb{ background:#272732; border-radius:999px }
     .bubble-out{ background:linear-gradient(135deg,var(--vq-bubble-out-start),var(--vq-bubble-out-end)); color:var(--vq-bubble-out-text); border-top-right-radius:.5rem; box-shadow:var(--vq-glow) }
     .bubble-in{ background:var(--vq-bubble-in); color:var(--vq-bubble-in-text); border-top-left-radius:.5rem }
     .bubble-system{ display:inline-block; background:#1f1f2a; color:var(--vq-muted); font-size:11px; padding:4px 10px; border-radius:999px; margin:6px auto; border:1px solid var(--vq-border) }
-
     .chip{ border:1px solid var(--vq-border); background:#151522; color:var(--vq-muted) }
-    .chip-sms{ border-color:#2aa198; color:#7fdbca } .chip-email{ border-color:#6d28d9; color:#c4b5fd }
-    .chip-fbig{ border-color:#2563eb; color:#93c5fd } .chip-wa{ border-color:#22c55e; color:#86efac }
+    .chip-sms{ border-color:#2aa198; color:#7fdbca }
+    .chip-email{ border-color:#6d28d9; color:#c4b5fd }
+    .chip-fbig{ border-color:#2563eb; color:#93c5fd }
+    .chip-wa{ border-color:#22c55e; color:#86efac }
     .shadow-soft{ box-shadow:0 10px 30px rgba(0,0,0,.25) } .vq-border{ border-color:var(--vq-border) }
     .btn{ transition:transform .06s ease } .btn:active{ transform:translateY(1px) }
-    .toggle{ border:1px solid var(--vq-border); background:#151522; color:var(--vq-muted) }
-    .toggle[data-on="true"]{ background:var(--vq-accent); color:var(--vq-bg); border-color:transparent }
   </style>
 </head>
 <body class="min-h-screen w-full" style="background:var(--vq-bg); color:var(--vq-text)">
@@ -69,20 +67,13 @@
 
       <!-- Right: thread -->
       <section class="col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden shadow-soft border vq-border flex flex-col" style="background:var(--vq-card)">
-        <!-- Title + Filters -->
-        <div class="px-4 py-3 border-b vq-border">
-          <div class="flex items-center justify-between gap-3">
-            <div id="thread-title" class="font-semibold truncate">Open a conversation</div>
-            <div id="thread-meta" class="chip text-[10px] px-2 py-1 rounded-lg hidden"></div>
-          </div>
-          <!-- Filter bar -->
-          <div class="mt-3 flex flex-wrap gap-2">
-            <button class="toggle text-[11px] px-2 py-1 rounded-md" data-filter="system" data-on="true">System</button>
-            <button class="toggle text-[11px] px-2 py-1 rounded-md" data-filter="sms" data-on="true">SMS</button>
-            <button class="toggle text-[11px] px-2 py-1 rounded-md" data-filter="email" data-on="true">Email</button>
-            <button class="toggle text-[11px] px-2 py-1 rounded-md" data-filter="fbig" data-on="true">FB/IG</button>
-            <button class="toggle text-[11px] px-2 py-1 rounded-md" data-filter="wa" data-on="true">WhatsApp</button>
-          </div>
+        <!-- Title + single filter -->
+        <div class="px-4 py-3 border-b vq-border flex items-center justify-between gap-3">
+          <div class="font-semibold truncate" id="thread-title">Open a conversation</div>
+          <label class="flex items-center gap-2 text-[12px]">
+            <input id="hide-system" type="checkbox" class="accent-[var(--vq-accent)]">
+            <span class="text-[var(--vq-muted)]">Hide system messages</span>
+          </label>
         </div>
 
         <!-- Thread -->
@@ -116,30 +107,30 @@
     pageSize: +(p.get("pageSize") || 20)
   };
 
+  // Elements
   const listEl = document.getElementById("list");
   const listErr = document.getElementById("list-error");
   const threadEl = document.getElementById("thread");
   const threadErr = document.getElementById("thread-error");
   const titleEl = document.getElementById("thread-title");
-  const metaEl = document.getElementById("thread-meta");
-  const searchEl = document.getElementById("search");
+  const draftEl = document.getElementById("draft");
+  const sendEl = document.getElementById("send");
   const btnPrev = document.getElementById("prev");
   const btnNext = document.getElementById("next");
   const pageEl = document.getElementById("page");
   const pagesEl = document.getElementById("pages");
   const btnRefresh = document.getElementById("btn-refresh");
-  const draftEl = document.getElementById("draft");
-  const sendEl = document.getElementById("send");
-  const filterButtons = Array.from(document.querySelectorAll(".toggle"));
+  const searchEl = document.getElementById("search");
+  const hideSystemEl = document.getElementById("hide-system");
 
+  // State
   let page = 1, totalPages = 1;
   let items = [], itemsBackup = [];
   let activeId = null;
   const meId = "me";
+  let hideSystem = false;
 
-  // Filters state
-  const filters = { system:true, sms:true, email:true, fbig:true, wa:true };
-
+  // Utils
   function timeAgo(iso){
     const d = new Date(iso||Date.now()), diff = Date.now()-d.getTime();
     const s = Math.floor(diff/1000); if(s<60) return s+"s";
@@ -151,27 +142,18 @@
   function postJSON(url, body){
     const headers = {"Content-Type":"application/json"};
     if(CFG.authToken) headers[CFG.authHeader] = CFG.authToken;
-    return fetch(url, {
-      method:"POST", headers,
-      body: JSON.stringify(Object.assign({ locationId: CFG.locationId }, body))
-    }).then(r => { if(!r.ok) throw new Error("HTTP "+r.status+" on "+url); return r.json(); });
+    return fetch(url, { method:"POST", headers, body: JSON.stringify(Object.assign({ locationId: CFG.locationId }, body)) })
+      .then(r => { if(!r.ok) throw new Error("HTTP "+r.status+" on "+url); return r.json(); });
   }
   function escapeHtml(str){ return String(str||"").replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[s])); }
 
-  /* ===== channel helpers ===== */
+  // Channel helpers (for badge in bubble)
   function channelLabel(type){
     if(type === "TYPE_SMS") return "SMS";
     if(type === "TYPE_EMAIL") return "Email";
     if(type && String(type).includes("FACEBOOK")) return "FB/IG";
     if(type && String(type).includes("WHATSAPP")) return "WA";
     return "Msg";
-  }
-  function channelKey(type){
-    if(type === "TYPE_SMS") return "sms";
-    if(type === "TYPE_EMAIL") return "email";
-    if(type && String(type).includes("FACEBOOK")) return "fbig";
-    if(type && String(type).includes("WHATSAPP")) return "wa";
-    return "other";
   }
   function channelClass(type){
     if(type === "TYPE_SMS") return "chip chip-sms";
@@ -180,12 +162,16 @@
     if(type && String(type).includes("WHATSAPP")) return "chip chip-wa";
     return "chip";
   }
-  function channelChip(type,direction){
-    const arrow = direction === "inbound" ? "⬅︎" : "➡︎";
-    return `<span class="${channelClass(type)} text-[10px] px-1.5 py-0.5 rounded-md">${arrow} ${channelLabel(type)}</span>`;
+  function platformBadge(m){
+    const t = m.channel || m.platform || m.messageType;
+    return `<span class="${channelClass(t)} text-[10px] px-1.5 py-0.5 rounded-md">${channelLabel(t)}</span>`;
+  }
+  function isSystemMsg(m){
+    const mt = (m.messageType || "").toString();
+    return m.isSystem === true || mt.startsWith("TYPE_ACTIVITY_");
   }
 
-  /* ===== List ===== */
+  // List
   function renderList(){
     listEl.innerHTML = "";
     items.forEach(it => {
@@ -204,7 +190,6 @@
             <div class="text-[10px] text-[var(--vq-muted)] whitespace-nowrap">${timeAgo(it.updatedAt)}</div>
           </div>
           <div class="flex items-center gap-2 mt-0.5">
-            ${it.channel ? channelChip(it.channel, it.direction) : ""}
             <div class="text-sm text-[var(--vq-muted)] truncate">${escapeHtml(it.lastLine||"")}</div>
           </div>
         </div>
@@ -233,42 +218,15 @@
       });
   }
 
-  /* ===== Thread ===== */
-  function isSystemMsg(m){
-    const mt = (m.messageType || "").toString();
-    return m.isSystem === true || mt.startsWith("TYPE_ACTIVITY_");
-  }
-
-  function allowedByFilter(m){
-    if(isSystemMsg(m)) return filters.system;
-    const key = channelKey(m.channel || m.platform || m.messageType);
-    if(key === "sms") return filters.sms;
-    if(key === "email") return filters.email;
-    if(key === "fbig") return filters.fbig;
-    if(key === "wa") return filters.wa;
-    // allow "other" by default
-    return true;
-  }
-
-  function platformBadge(m){
-    const t = m.channel || m.platform || m.messageType;
-    const cls = channelClass(t);
-    const label = channelLabel(t);
-    return `<span class="${cls} text-[10px] px-1.5 py-0.5 rounded-md">${label}</span>`;
-  }
-
+  // Thread
   function renderThread(data){
     threadEl.innerHTML = "";
     const messages = (data.messages || []).slice().sort((a,b)=>new Date(a.sentAt)-new Date(b.sentAt));
     const other = (data.participants||[]).find(p => p.id !== meId);
-    const name = other?.name || "Conversation";
-    titleEl.textContent = name;
-
-    if(data.channel){ metaEl.classList.remove("hidden"); metaEl.textContent = data.channel; }
-    else { metaEl.classList.add("hidden"); }
+    titleEl.textContent = other?.name || "Conversation";
 
     messages.forEach(m=>{
-      if(!allowedByFilter(m)) return;
+      if(hideSystem && isSystemMsg(m)) return;
 
       if(isSystemMsg(m)){
         const wrap = document.createElement("div");
@@ -282,7 +240,7 @@
 
       const mine = m.authorId === meId;
       const wrap = document.createElement("div");
-      wrap.className = "flex "+(mine?"justify-end":"justify-start")+" animate-fade";
+      wrap.className = "flex "+(mine?"justify-end":"justify-start");
       const bubble = document.createElement("div");
       bubble.className = "relative max-w-[80%] px-4 py-2 rounded-2xl text-sm "+(mine?"bubble-out":"bubble-in");
       bubble.innerHTML = `
@@ -309,7 +267,7 @@
       });
   }
 
-  /* ===== Send ===== */
+  // Send
   function sendMessage(){
     const text = (draftEl.value||"").trim();
     if(!activeId || !text) return;
@@ -325,31 +283,23 @@
       .finally(()=> sendEl.disabled = false);
   }
 
-  /* ===== Events ===== */
+  // Events
   btnPrev.onclick = () => { if(page>1) { page--; fetchList(page); } };
   btnNext.onclick = () => { if(page<totalPages) { page++; fetchList(page); } };
   btnRefresh.onclick = () => fetchList(page);
-
   searchEl.addEventListener("input", e=>{
     const q = (e.target.value||"").toLowerCase();
     items = !q ? itemsBackup.slice() :
       itemsBackup.filter(i=> (i.name||"").toLowerCase().includes(q) || (i.lastLine||"").toLowerCase().includes(q));
     renderList();
   });
-
   draftEl.addEventListener("keydown", e=>{
     if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
   });
   sendEl.onclick = sendMessage;
-
-  filterButtons.forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      const key = btn.getAttribute("data-filter");
-      const on = btn.getAttribute("data-on") === "true";
-      filters[key] = !on;
-      btn.setAttribute("data-on", String(!on));
-      if(activeId) fetchThread(activeId);
-    });
+  hideSystemEl.addEventListener("change", ()=>{
+    hideSystem = hideSystemEl.checked;
+    if(activeId) fetchThread(activeId);
   });
 
   // Init
