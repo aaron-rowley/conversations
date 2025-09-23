@@ -1,72 +1,111 @@
-<!-- [WIDGET_HTML_START] -->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>VisQuanta – Conversations</title>
-  <!-- Tailwind (CDN) -->
+  <title>VisQuanta — Conversations</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    :root {
-      --vq-primary: #5E6AD2;
-      --vq-primaryText: #ffffff;
-      --vq-incoming: #E9ECEF;
-      --vq-incomingText: #111827;
+    /* ===== VisQuanta Dark Theme ===== */
+    :root{
+      --vq-bg: #0b0b10;          /* app background */
+      --vq-card: #121218;        /* panels/cards */
+      --vq-border: #1c1c25;      /* borders / dividers */
+      --vq-text: #e9e9f2;        /* primary text */
+      --vq-muted: #a0a6b3;       /* secondary text */
+      --vq-accent: #ff7a00;      /* brand orange */
+      --vq-accent-600:#ff8b24;
+      --vq-accent-700:#ff6d00;
+
+      /* bubbles */
+      --vq-bubble-out:#ff7a00;   /* outgoing bubble */
+      --vq-bubble-out-text:#0b0b10;
+      --vq-bubble-in:#1b1b24;    /* incoming bubble */
+      --vq-bubble-in-text:#e9e9f2;
+
+      /* list row hover */
+      --vq-hover:#161621;
+
+      /* subtle glow for accents */
+      --vq-glow: 0 8px 24px rgba(255,122,0,.18);
     }
-    .bubble-out { background: var(--vq-primary); color: var(--vq-primaryText); border-top-right-radius:.4rem; }
-    .bubble-in { background: var(--vq-incoming); color: var(--vq-incomingText); border-top-left-radius:.4rem; }
-    .shadow-soft { box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+    /* nice scrollbars */
+    *{ scrollbar-width: thin; scrollbar-color: #2a2a36 transparent; }
+    *::-webkit-scrollbar{ width:10px; height:10px }
+    *::-webkit-scrollbar-thumb{ background:#272732; border-radius:999px }
+    *::-webkit-scrollbar-track{ background:transparent }
+
+    .bubble-out { background: var(--vq-bubble-out); color: var(--vq-bubble-out-text); border-top-right-radius:.5rem; box-shadow: var(--vq-glow); }
+    .bubble-in  { background: var(--vq-bubble-in);  color: var(--vq-bubble-in-text);  border-top-left-radius:.5rem; }
+    .chip       { border:1px solid var(--vq-border); background:#151522; color:var(--vq-muted); }
+    .shadow-soft{ box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .vq-border  { border-color: var(--vq-border) }
     .truncate-2 { overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;}
+    .btn { transition: transform .06s ease; }
+    .btn:active { transform: translateY(1px); }
   </style>
 </head>
-<body class="bg-white">
-  <div id="app" class="p-4 max-w-7xl mx-auto">
+<body class="min-h-screen" style="background:var(--vq-bg); color:var(--vq-text)">
+
+  <!-- Top bar -->
+  <header class="max-w-7xl mx-auto px-4 pt-4 pb-2">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-8 w-8 rounded-xl" style="background:var(--vq-accent)"></div>
+        <div class="text-sm uppercase tracking-widest text-[var(--vq-muted)]">VisQuanta</div>
+      </div>
+      <div class="text-xs text-[var(--vq-muted)]">Conversations</div>
+    </div>
+  </header>
+
+  <main id="app" class="max-w-7xl mx-auto px-4 pb-6">
     <div class="grid grid-cols-12 gap-4">
       <!-- Left: list -->
-      <div class="col-span-12 md:col-span-4 lg:col-span-3 border rounded-2xl overflow-hidden shadow-soft">
-        <div class="px-4 py-3 flex items-center justify-between border-b">
+      <div class="col-span-12 md:col-span-4 lg:col-span-3 rounded-2xl overflow-hidden shadow-soft border vq-border" style="background:var(--vq-card)">
+        <div class="px-4 py-3 flex items-center justify-between border-b vq-border">
           <div class="font-semibold flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-.495a1.125 1.125 0 00-.852-1.09l-4.423-1.106a1.125 1.125 0 00-1.09.285l-.97.97a12.04 12.04 0 01-6.313-6.313l.97-.97a1.125 1.125 0 00.285-1.09L6.585 2.85A1.125 1.125 0 005.495 2H5A2.25 2.25 0 002.75 4.25v2.5z"/></svg>
             Conversations
           </div>
-          <button id="btn-refresh" class="text-sm px-2 py-1 rounded-md border hover:bg-gray-50">Refresh</button>
+          <button id="btn-refresh" class="btn text-xs px-3 py-1.5 rounded-lg border vq-border" style="background:#151522">Refresh</button>
         </div>
         <div class="p-3">
-          <input id="search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Search…" />
+          <input id="search" class="w-full rounded-lg px-3 py-2 text-sm border vq-border" style="background:#151522; color:var(--vq-text)" placeholder="Search…" />
         </div>
-        <div id="list-error" class="hidden px-4 pb-2 text-sm text-red-600"></div>
-        <div id="list" class="max-h-[70vh] overflow-auto divide-y"></div>
-        <div class="p-3 border-t flex items-center justify-between">
-          <button id="prev" class="text-sm px-3 py-1.5 rounded-md border disabled:opacity-50">Prev</button>
-          <div class="text-xs text-gray-500"><span id="page">1</span>/<span id="pages">1</span></div>
-          <button id="next" class="text-sm px-3 py-1.5 rounded-md border disabled:opacity-50">Next</button>
+        <div id="list-error" class="hidden px-4 pb-2 text-sm text-red-400"></div>
+        <div id="list" class="max-h-[70vh] overflow-auto divide-y divide-[var(--vq-border)]"></div>
+        <div class="p-3 border-t vq-border flex items-center justify-between">
+          <button id="prev" class="btn text-xs px-3 py-1.5 rounded-lg border vq-border disabled:opacity-50" style="background:#151522">Prev</button>
+          <div class="text-[10px] text-[var(--vq-muted)]"><span id="page">1</span>/<span id="pages">1</span></div>
+          <button id="next" class="btn text-xs px-3 py-1.5 rounded-lg border vq-border disabled:opacity-50" style="background:#151522">Next</button>
         </div>
       </div>
 
       <!-- Right: thread -->
-      <div class="col-span-12 md:col-span-8 lg:col-span-9 border rounded-2xl overflow-hidden shadow-soft">
-        <div class="px-4 py-3 border-b">
+      <div class="col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden shadow-soft border vq-border" style="background:var(--vq-card)">
+        <div class="px-4 py-3 border-b vq-border flex items-center justify-between">
           <div id="thread-title" class="font-semibold truncate">Open a conversation</div>
+          <div id="thread-meta" class="chip text-[10px] px-2 py-1 rounded-lg hidden"></div>
         </div>
-        <div id="thread-error" class="hidden px-4 pt-3 text-sm text-red-600"></div>
-        <div id="thread" class="h-[60vh] overflow-auto p-4 space-y-2 bg-white"></div>
-        <div class="p-3 border-t">
-          <div class="border rounded-xl p-2">
-            <textarea id="draft" rows="3" class="w-full resize-none border-0 focus:outline-none text-sm" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+        <div id="thread-error" class="hidden px-4 pt-3 text-sm text-red-400"></div>
+        <div id="thread" class="h-[60vh] overflow-auto p-4 space-y-2"></div>
+
+        <!-- Composer -->
+        <div class="p-3 border-t vq-border">
+          <div class="rounded-xl p-2 border vq-border" style="background:#151522">
+            <textarea id="draft" rows="3" class="w-full resize-none border-0 focus:outline-none text-sm" style="background:transparent; color:var(--vq-text)" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
             <div class="mt-2 flex items-center justify-between">
-              <div class="text-xs text-gray-500">Press Enter to send</div>
-              <button id="send" class="px-3 py-1.5 text-sm rounded-lg bg-[var(--vq-primary)] text-white disabled:opacity-60">Send</button>
+              <div class="text-[10px] text-[var(--vq-muted)]">Press Enter to send</div>
+              <button id="send" class="btn px-3 py-1.5 text-sm rounded-lg text-[var(--vq-bg)]" style="background:var(--vq-accent)">Send</button>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
 <script>
 (function(){
-  // --- Query params ---
   const p = new URLSearchParams(location.search);
   const CFG = {
     listUrl: p.get("listUrl"),
@@ -78,12 +117,12 @@
     pageSize: +(p.get("pageSize") || 20)
   };
 
-  // --- Elements ---
   const listEl = document.getElementById("list");
   const listErr = document.getElementById("list-error");
   const threadEl = document.getElementById("thread");
   const threadErr = document.getElementById("thread-error");
   const titleEl = document.getElementById("thread-title");
+  const metaEl = document.getElementById("thread-meta");
   const searchEl = document.getElementById("search");
   const btnPrev = document.getElementById("prev");
   const btnNext = document.getElementById("next");
@@ -93,15 +132,14 @@
   const draftEl = document.getElementById("draft");
   const sendEl = document.getElementById("send");
 
-  // --- State ---
   let page = 1, totalPages = 1;
   let items = [];
+  let itemsBackup = [];
   let activeId = null;
-  const meId = "me"; // map to your agent id in your webhook response
+  const meId = "me";
 
-  // --- Utils ---
   function timeAgo(iso){
-    const d = new Date(iso), diff = Date.now()-d.getTime();
+    const d = new Date(iso||Date.now()), diff = Date.now()-d.getTime();
     const s = Math.floor(diff/1000); if(s<60) return s+"s";
     const m = Math.floor(s/60); if(m<60) return m+"m";
     const h = Math.floor(m/60); if(h<24) return h+"h";
@@ -109,31 +147,53 @@
     return d.toLocaleDateString();
   }
   function postJSON(url, body){
+    const headers = {"Content-Type":"application/json"};
+    if(CFG.authToken) headers[CFG.authHeader] = CFG.authToken;
     return fetch(url, {
       method:"POST",
-      headers: Object.assign({"Content-Type":"application/json"}, CFG.authToken ? {[CFG.authHeader]: CFG.authToken} : {}),
+      headers,
       body: JSON.stringify(Object.assign({ locationId: CFG.locationId }, body))
     }).then(r => { if(!r.ok) throw new Error("HTTP "+r.status+" on "+url); return r.json(); });
   }
+  function escapeHtml(str){ return String(str||"").replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[s])); }
 
-  // --- List ---
+  /* ========== Left list ========== */
+  function channelChip(type,direction){
+    let label = "Msg";
+    if(type === "TYPE_SMS") label = "SMS";
+    else if(type === "TYPE_EMAIL") label = "Email";
+    else if(type && String(type).includes("FACEBOOK")) label = "FB/IG";
+    else if(type && String(type).includes("WHATSAPP")) label = "WA";
+    const arrow = direction === "inbound" ? "⬅︎" : "➡︎";
+    return `<span class="chip text-[10px] px-1.5 py-0.5 rounded-md">${arrow} ${label}</span>`;
+  }
+
   function renderList(){
     listEl.innerHTML = "";
     items.forEach(it => {
-      const li = document.createElement("button");
-      li.className = "w-full text-left px-4 py-3 hover:bg-gray-50 transition flex gap-3 "+(activeId===it.id?"bg-gray-50":"");
-      li.onclick = () => fetchThread(it.id);
-      li.innerHTML = `
+      const row = document.createElement("button");
+      row.className = "w-full text-left px-4 py-3 transition flex gap-3 items-start hover:bg-[var(--vq-hover)] "+(activeId===it.id?"bg-[var(--vq-hover)]":"");
+      row.onclick = () => fetchThread(it.id);
+
+      // initials avatar
+      const initials = (it.name||"VQ").split(" ").slice(0,2).map(x=>x[0]?.toUpperCase()).join("");
+      const avatar = `<div class="h-8 w-8 rounded-xl flex items-center justify-center text-xs font-semibold" style="background:#202030; color:var(--vq-text)">${escapeHtml(initials||"VQ")}</div>`;
+
+      row.innerHTML = `
+        ${avatar}
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between gap-3">
             <div class="font-medium truncate">${escapeHtml(it.name||"Conversation")}</div>
-            <div class="text-xs text-gray-500 whitespace-nowrap">${timeAgo(it.updatedAt)}</div>
+            <div class="text-[10px] text-[var(--vq-muted)] whitespace-nowrap">${timeAgo(it.updatedAt)}</div>
           </div>
-          <div class="text-sm text-gray-500 truncate">${escapeHtml(it.lastLine||"")}</div>
+          <div class="flex items-center gap-2 mt-0.5">
+            ${it.channel ? channelChip(it.channel, it.direction) : ""}
+            <div class="text-sm text-[var(--vq-muted)] truncate">${escapeHtml(it.lastLine||"")}</div>
+          </div>
         </div>
-        ${it.unreadCount?`<span class="ml-2 text-xs bg-[var(--vq-primary)] text-white px-2 py-0.5 rounded-full">${it.unreadCount}</span>`:""}
+        ${it.unreadCount?`<span class="ml-2 text-[10px] px-2 py-0.5 rounded-full" style="background:var(--vq-accent); color:var(--vq-bg)">${it.unreadCount}</span>`:""}
       `;
-      listEl.appendChild(li);
+      listEl.appendChild(row);
     });
     pageEl.textContent = String(page);
     pagesEl.textContent = String(totalPages);
@@ -148,6 +208,7 @@
         page = data.page || nextPage;
         totalPages = data.totalPages || 1;
         items = data.items || [];
+        itemsBackup = items.slice();
         renderList();
       })
       .catch(e => {
@@ -156,12 +217,21 @@
       });
   }
 
-  // --- Thread ---
+  /* ========== Thread ========== */
   function renderThread(data){
     threadEl.innerHTML = "";
     const messages = data.messages || [];
     const other = (data.participants||[]).find(p => p.id !== meId);
-    titleEl.textContent = other?.name || "Conversation";
+    const name = other?.name || "Conversation";
+    titleEl.textContent = name;
+
+    // Optional meta chip (show when provided)
+    if(data.channel){
+      metaEl.classList.remove("hidden");
+      metaEl.textContent = data.channel;
+    } else {
+      metaEl.classList.add("hidden");
+    }
 
     messages.sort((a,b)=>new Date(a.sentAt)-new Date(b.sentAt));
     messages.forEach(m=>{
@@ -169,10 +239,10 @@
       const wrap = document.createElement("div");
       wrap.className = "flex "+(mine?"justify-end":"justify-start");
       const bubble = document.createElement("div");
-      bubble.className = "max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-soft "+(mine?"bubble-out":"bubble-in");
+      bubble.className = "max-w-[80%] px-4 py-2 rounded-2xl text-sm "+(mine?"bubble-out":"bubble-in");
       bubble.innerHTML = `
         <div class="whitespace-pre-wrap break-words">${escapeHtml(m.text||"")}</div>
-        <div class="mt-1 text-[10px] opacity-70 ${mine?"text-white":"text-gray-500"}">${new Date(m.sentAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
+        <div class="mt-1 text-[10px] opacity-70 ${mine?"":"text-[var(--vq-muted)]"}">${new Date(m.sentAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
       `;
       wrap.appendChild(bubble);
       threadEl.appendChild(wrap);
@@ -191,14 +261,14 @@
       });
   }
 
-  // --- Send ---
+  /* ========== Send ========== */
   function sendMessage(){
     const text = (draftEl.value||"").trim();
     if(!activeId || !text) return;
-    // optimistic render
+    // optimistic
     renderThread({
-      participants: [{id:"other", name:titleEl.textContent}],
-      messages: [...documentOptimisticMessages(), { id:"optimistic-"+Date.now(), authorId: meId, text, sentAt:new Date().toISOString() }]
+      participants: [{id:"contact", name:titleEl.textContent}],
+      messages: [{ id:"optimistic-"+Date.now(), authorId: meId, text, sentAt:new Date().toISOString() }]
     });
     draftEl.value = "";
     sendEl.disabled = true;
@@ -208,34 +278,23 @@
       .finally(()=> sendEl.disabled = false);
   }
 
-  function documentOptimisticMessages(){
-    // best-effort: we don't parse DOM back; just return empty and rely on refetch after send
-    return [];
-  }
-
-  // --- Events ---
+  /* ========== Events ========== */
   btnPrev.onclick = () => { if(page>1) { page--; fetchList(page); } };
   btnNext.onclick = () => { if(page<totalPages) { page++; fetchList(page); } };
   btnRefresh.onclick = () => fetchList(page);
   searchEl.addEventListener("input", e=>{
     const q = (e.target.value||"").toLowerCase();
-    const filtered = items.filter(i=> (i.name||"").toLowerCase().includes(q) || (i.lastLine||"").toLowerCase().includes(q));
-    const backup = items; items = filtered; renderList(); items = backup;
+    items = !q ? itemsBackup.slice() :
+      itemsBackup.filter(i=> (i.name||"").toLowerCase().includes(q) || (i.lastLine||"").toLowerCase().includes(q));
+    renderList();
   });
   draftEl.addEventListener("keydown", e=>{
     if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
   });
   sendEl.onclick = sendMessage;
 
-  // --- Helpers ---
-  function escapeHtml(str){
-    return String(str).replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[s]));
-  }
-
-  // Initial load
   fetchList(1);
 })();
 </script>
 </body>
 </html>
-<!-- [WIDGET_HTML_END] -->
