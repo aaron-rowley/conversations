@@ -1,317 +1,241 @@
-// ========================= VISQUANTA MESSAGING – START =========================
-// Paste this whole file as a new React component, e.g. src/components/ConversationsUI.tsx
-// Then import and render <ConversationsUI /> somewhere in your app.
-// Ctrl+F anchors for quick editing:
-//   [CFG_TOP] – configure webhook URLs & theme
-//   [SCHEMA] – response + payload contracts to wire in n8n
-//   [LIST_FETCH] – list webhook call
-//   [THREAD_FETCH] – thread webhook call
-//   [SEND_MSG] – send webhook call
-//   [STYLE] – iPhone-style bubbles & layout tweaks
-
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { Phone, Send, RefreshCw, Loader2, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn } from "@/lib/utils";
-
-// [CFG_TOP] ———— Read from querystring
-const params = new URLSearchParams(window.location.search);
-const CFG = {
-  listUrl: params.get("listUrl")!,
-  threadUrl: params.get("threadUrl")!,
-  sendUrl: params.get("sendUrl")!,
-  locationId: params.get("locationId")!,
-  authHeader: params.get("authHeader") || "Authorization",
-  authToken: params.get("authToken") || "",
-  pageSize: 20,
-  color: {
-    primary: "#5E6AD2",
-    primaryText: "#ffffff",
-    incoming: "#E9ECEF",
-    incomingText: "#111827",
-    accent: "#111827",
-  },
-};
-
-// [SCHEMA] ———— Contracts you can mirror in n8n
-// LIST (POST listUrl)
-// req: { locationId: string, page: number, pageSize: number }
-// res: { page:number, totalPages:number, items: Array<{ id:string, name:string, lastLine:string, updatedAt:string, unreadCount?:number }> }
-// THREAD (POST threadUrl)
-// req: { locationId: string, conversationId:string, before?:string, after?:string }
-// res: { conversationId:string, participants:Array<{id:string, name:string}>, messages:Array<{id:string, authorId:string, authorName?:string, text:string, sentAt:string}> }
-// SEND (POST sendUrl)
-// req: { locationId:string, conversationId:string, text:string }
-// res: { ok:true, messageId:string, sentAt:string }
-
-interface ListItem { id: string; name: string; lastLine: string; updatedAt: string; unreadCount?: number }
-interface ThreadMessage { id: string; authorId: string; authorName?: string; text: string; sentAt: string }
-interface ThreadRes { conversationId: string; participants: Array<{id: string; name: string}>; messages: ThreadMessage[] }
-
-function timeAgo(iso: string) {
-  const d = new Date(iso);
-  const diff = Date.now() - d.getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const days = Math.floor(h / 24);
-  if (days < 7) return `${days}d`;
-  return d.toLocaleDateString();
-}
-
-async function postJSON<T>(url: string, body: any) : Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      [CFG.authHeader]: CFG.authToken,
-    },
-    body: JSON.stringify({ locationId: CFG.locationId, ...body }),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} on ${url}`);
-  return res.json();
-}
-
-export default function ConversationsUI() {
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [listLoading, setListLoading] = useState(true);
-  const [listError, setListError] = useState<string | null>(null);
-  const [items, setItems] = useState<ListItem[]>([]);
-
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [thread, setThread] = useState<ThreadRes | null>(null);
-  const [threadLoading, setThreadLoading] = useState(false);
-  const [threadError, setThreadError] = useState<string | null>(null);
-
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const meId = "me";
-
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  useEffect(() => { scrollToBottom(); }, [thread?.messages.length]);
-
-  useEffect(() => { (async () => { await fetchList(1); })(); }, []);
-
-  async function fetchList(nextPage: number) {
-    try {
-      setListLoading(true); setListError(null);
-      const data = await postJSON<{page:number; totalPages:number; items:ListItem[]}>(CFG.listUrl, { page: nextPage, pageSize: CFG.pageSize });
-      setItems(data.items);
-      setPage(data.page);
-      setTotalPages(data.totalPages);
-    } catch (e: any) {
-      setListError(e?.message ?? "Failed to load conversations");
-    } finally {
-      setListLoading(false);
+<!-- [WIDGET_HTML_START] -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>VisQuanta – Conversations</title>
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --vq-primary: #5E6AD2;
+      --vq-primaryText: #ffffff;
+      --vq-incoming: #E9ECEF;
+      --vq-incomingText: #111827;
     }
-  }
-
-  async function fetchThread(conversationId: string) {
-    try {
-      setThreadLoading(true); setThreadError(null);
-      setActiveId(conversationId);
-      const data = await postJSON<ThreadRes>(CFG.threadUrl, { conversationId });
-      data.messages.sort((a,b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
-      setThread(data);
-    } catch (e: any) {
-      setThreadError(e?.message ?? "Failed to load conversation");
-    } finally {
-      setThreadLoading(false);
-    }
-  }
-
-  async function sendMessage() {
-    const text = draft.trim();
-    if (!activeId || !text) return;
-    setSending(true);
-
-    const optimistic: ThreadMessage = {
-      id: `optimistic-${Date.now()}`,
-      authorId: meId,
-      authorName: "You",
-      text,
-      sentAt: new Date().toISOString(),
-    };
-    setThread(prev => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev);
-    setDraft("");
-    scrollToBottom();
-
-    try {
-      await postJSON<{ ok: boolean; messageId: string; sentAt: string }>(CFG.sendUrl, { conversationId: activeId, text });
-      await fetchThread(activeId);
-    } catch (e) {
-      setThread(prev => prev ? { ...prev, messages: prev.messages.filter(m => m.id !== optimistic.id) } : prev);
-      alert((e as any)?.message ?? "Failed to send message");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  }
-
-  const activeName = useMemo(() => {
-    if (!activeId) return "";
-    const fromList = items.find(i => i.id === activeId)?.name;
-    const fromThread = thread?.participants.find(p => p.id !== meId)?.name;
-    return fromList || fromThread || "Conversation";
-  }, [activeId, items, thread]);
-
-  return (
-    <div className="w-full h-[calc(100vh-2rem)] grid grid-cols-12 gap-4 p-4">
-      {/* Left column: conversation list */}
-      <Card className="col-span-12 md:col-span-4 lg:col-span-3 rounded-2xl overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5"/> Conversations</CardTitle>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => fetchList(page)} title="Refresh">
-              <RefreshCw className={cn("h-4 w-4", listLoading && "animate-spin")} />
-            </Button>
+    .bubble-out { background: var(--vq-primary); color: var(--vq-primaryText); border-top-right-radius:.4rem; }
+    .bubble-in { background: var(--vq-incoming); color: var(--vq-incomingText); border-top-left-radius:.4rem; }
+    .shadow-soft { box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+    .truncate-2 { overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;}
+  </style>
+</head>
+<body class="bg-white">
+  <div id="app" class="p-4 max-w-7xl mx-auto">
+    <div class="grid grid-cols-12 gap-4">
+      <!-- Left: list -->
+      <div class="col-span-12 md:col-span-4 lg:col-span-3 border rounded-2xl overflow-hidden shadow-soft">
+        <div class="px-4 py-3 flex items-center justify-between border-b">
+          <div class="font-semibold flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-.495a1.125 1.125 0 00-.852-1.09l-4.423-1.106a1.125 1.125 0 00-1.09.285l-.97.97a12.04 12.04 0 01-6.313-6.313l.97-.97a1.125 1.125 0 00.285-1.09L6.585 2.85A1.125 1.125 0 005.495 2H5A2.25 2.25 0 002.75 4.25v2.5z"/></svg>
+            Conversations
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="px-3 pb-3">
-            <Input placeholder="Search (client side)" onChange={(e) => {
-              const q = e.target.value.toLowerCase();
-              const base = (window as any).__listBackup ?? items;
-              if (!(window as any).__listBackup) (window as any).__listBackup = items;
-              const filtered = base.filter((i: ListItem) => i.name.toLowerCase().includes(q) || i.lastLine.toLowerCase().includes(q));
-              setItems(q ? filtered : base);
-            }} />
-          </div>
+          <button id="btn-refresh" class="text-sm px-2 py-1 rounded-md border hover:bg-gray-50">Refresh</button>
+        </div>
+        <div class="p-3">
+          <input id="search" class="w-full border rounded-lg px-3 py-2 text-sm" placeholder="Search…" />
+        </div>
+        <div id="list-error" class="hidden px-4 pb-2 text-sm text-red-600"></div>
+        <div id="list" class="max-h-[70vh] overflow-auto divide-y"></div>
+        <div class="p-3 border-t flex items-center justify-between">
+          <button id="prev" class="text-sm px-3 py-1.5 rounded-md border disabled:opacity-50">Prev</button>
+          <div class="text-xs text-gray-500"><span id="page">1</span>/<span id="pages">1</span></div>
+          <button id="next" class="text-sm px-3 py-1.5 rounded-md border disabled:opacity-50">Next</button>
+        </div>
+      </div>
 
-          {listError && (
-            <div className="px-4 pb-3 text-sm text-red-600 flex items-center gap-2"><AlertCircle className="h-4 w-4"/> {listError}</div>
-          )}
-
-          <ScrollArea className="h-[70vh]">
-            {listLoading ? (
-              <div className="p-4 space-y-3">
-                {Array.from({ length: 8 }).map((_,i) => (
-                  <div key={i} className="animate-pulse h-14 rounded-xl bg-muted" />
-                ))}
-              </div>
-            ) : (
-              <ul className="divide-y">
-                {items.map(item => (
-                  <li key={item.id}>
-                    <button
-                      onClick={() => fetchThread(item.id)}
-                      className={cn(
-                        "w-full px-4 py-3 flex items-start gap-3 hover:bg-muted/60 transition text-left",
-                        activeId === item.id && "bg-muted"
-                      )}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium truncate">{item.name}</div>
-                          <div className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(item.updatedAt)}</div>
-                        </div>
-                        <div className="text-sm text-muted-foreground truncate">{item.lastLine}</div>
-                      </div>
-                      {!!item.unreadCount && (
-                        <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">{item.unreadCount}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ScrollArea>
-
-          <div className="flex items-center justify-between p-3 border-t">
-            <Button variant="outline" size="sm" disabled={page<=1 || listLoading} onClick={() => fetchList(page-1)}>
-              <ChevronLeft className="h-4 w-4 mr-1"/> Prev
-            </Button>
-            <div className="text-xs text-muted-foreground">Page {page} / {totalPages}</div>
-            <Button variant="outline" size="sm" disabled={page>=totalPages || listLoading} onClick={() => fetchList(page+1)}>
-              Next <ChevronRight className="h-4 w-4 ml-1"/>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Right column: thread */}
-      <Card className="col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden">
-        <CardHeader>
-          <CardTitle className="truncate">{activeId ? activeName : "Open a conversation"}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col h-[80vh]">
-          <div className="flex-1">
-            <ScrollArea className="h-[60vh] pr-2">
-              {threadLoading && (
-                <div className="p-4 space-y-3">
-                  {Array.from({ length: 6 }).map((_,i) => (
-                    <div key={i} className={cn("animate-pulse h-10 w-2/3 rounded-2xl", i%2===0 ? "bg-muted ml-auto" : "bg-muted")}/>
-                  ))}
-                </div>
-              )}
-              {threadError && (
-                <div className="p-4 text-sm text-red-600 flex items-center gap-2"><AlertCircle className="h-4 w-4"/> {threadError}</div>
-              )}
-
-              {!threadLoading && thread?.messages && (
-                <div className="p-4 space-y-2">
-                  {thread.messages.map(m => {
-                    const mine = m.authorId === meId;
-                    return (
-                      <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}> 
-                        <motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.15}} 
-                          className={cn("max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-sm",
-                            mine ? "bubble-outgoing" : "bubble-incoming")}
-                        >
-                          <div className="whitespace-pre-wrap break-words">{m.text}</div>
-                          <div className={cn("mt-1 text-[10px] opacity-70", mine ? "text-white" : "text-muted-foreground")}>{new Date(m.sentAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
-                        </motion.div>
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </ScrollArea>
-          </div>
-
-          <div className="mt-3 border rounded-xl p-2">
-            <Textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-              className="resize-none border-0 focus-visible:ring-0 focus:outline-none"
-              rows={3}
-            />
-            <div className="flex items-center justify-between mt-2">
-              <div className="text-xs text-muted-foreground">Press Enter to send</div>
-              <Button onClick={sendMessage} disabled={!activeId || !draft.trim() || sending}>
-                {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Send className="h-4 w-4 mr-2"/>}
-                Send
-              </Button>
+      <!-- Right: thread -->
+      <div class="col-span-12 md:col-span-8 lg:col-span-9 border rounded-2xl overflow-hidden shadow-soft">
+        <div class="px-4 py-3 border-b">
+          <div id="thread-title" class="font-semibold truncate">Open a conversation</div>
+        </div>
+        <div id="thread-error" class="hidden px-4 pt-3 text-sm text-red-600"></div>
+        <div id="thread" class="h-[60vh] overflow-auto p-4 space-y-2 bg-white"></div>
+        <div class="p-3 border-t">
+          <div class="border rounded-xl p-2">
+            <textarea id="draft" rows="3" class="w-full resize-none border-0 focus:outline-none text-sm" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
+            <div class="mt-2 flex items-center justify-between">
+              <div class="text-xs text-gray-500">Press Enter to send</div>
+              <button id="send" class="px-3 py-1.5 text-sm rounded-lg bg-[var(--vq-primary)] text-white disabled:opacity-60">Send</button>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      <style>{`
-        .bubble-outgoing { background: ${CFG.color.primary}; color: ${CFG.color.primaryText}; border-top-right-radius: .4rem; }
-        .bubble-incoming { background: ${CFG.color.incoming}; color: ${CFG.color.incomingText}; border-top-left-radius: .4rem; }
-      `}</style>
+        </div>
+      </div>
     </div>
-  );
-}
+  </div>
 
-// ========================= VISQUANTA MESSAGING – END =========================
+<script>
+(function(){
+  // --- Query params ---
+  const p = new URLSearchParams(location.search);
+  const CFG = {
+    listUrl: p.get("listUrl"),
+    threadUrl: p.get("threadUrl"),
+    sendUrl: p.get("sendUrl"),
+    locationId: p.get("locationId"),
+    authHeader: p.get("authHeader") || "Authorization",
+    authToken: p.get("authToken") || "",
+    pageSize: +(p.get("pageSize") || 20)
+  };
+
+  // --- Elements ---
+  const listEl = document.getElementById("list");
+  const listErr = document.getElementById("list-error");
+  const threadEl = document.getElementById("thread");
+  const threadErr = document.getElementById("thread-error");
+  const titleEl = document.getElementById("thread-title");
+  const searchEl = document.getElementById("search");
+  const btnPrev = document.getElementById("prev");
+  const btnNext = document.getElementById("next");
+  const pageEl = document.getElementById("page");
+  const pagesEl = document.getElementById("pages");
+  const btnRefresh = document.getElementById("btn-refresh");
+  const draftEl = document.getElementById("draft");
+  const sendEl = document.getElementById("send");
+
+  // --- State ---
+  let page = 1, totalPages = 1;
+  let items = [];
+  let activeId = null;
+  const meId = "me"; // map to your agent id in your webhook response
+
+  // --- Utils ---
+  function timeAgo(iso){
+    const d = new Date(iso), diff = Date.now()-d.getTime();
+    const s = Math.floor(diff/1000); if(s<60) return s+"s";
+    const m = Math.floor(s/60); if(m<60) return m+"m";
+    const h = Math.floor(m/60); if(h<24) return h+"h";
+    const days = Math.floor(h/24); if(days<7) return days+"d";
+    return d.toLocaleDateString();
+  }
+  function postJSON(url, body){
+    return fetch(url, {
+      method:"POST",
+      headers: Object.assign({"Content-Type":"application/json"}, CFG.authToken ? {[CFG.authHeader]: CFG.authToken} : {}),
+      body: JSON.stringify(Object.assign({ locationId: CFG.locationId }, body))
+    }).then(r => { if(!r.ok) throw new Error("HTTP "+r.status+" on "+url); return r.json(); });
+  }
+
+  // --- List ---
+  function renderList(){
+    listEl.innerHTML = "";
+    items.forEach(it => {
+      const li = document.createElement("button");
+      li.className = "w-full text-left px-4 py-3 hover:bg-gray-50 transition flex gap-3 "+(activeId===it.id?"bg-gray-50":"");
+      li.onclick = () => fetchThread(it.id);
+      li.innerHTML = `
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-3">
+            <div class="font-medium truncate">${escapeHtml(it.name||"Conversation")}</div>
+            <div class="text-xs text-gray-500 whitespace-nowrap">${timeAgo(it.updatedAt)}</div>
+          </div>
+          <div class="text-sm text-gray-500 truncate">${escapeHtml(it.lastLine||"")}</div>
+        </div>
+        ${it.unreadCount?`<span class="ml-2 text-xs bg-[var(--vq-primary)] text-white px-2 py-0.5 rounded-full">${it.unreadCount}</span>`:""}
+      `;
+      listEl.appendChild(li);
+    });
+    pageEl.textContent = String(page);
+    pagesEl.textContent = String(totalPages);
+    btnPrev.disabled = page<=1;
+    btnNext.disabled = page>=totalPages;
+  }
+
+  function fetchList(nextPage){
+    listErr.classList.add("hidden");
+    postJSON(CFG.listUrl, { page: nextPage, pageSize: CFG.pageSize })
+      .then(data => {
+        page = data.page || nextPage;
+        totalPages = data.totalPages || 1;
+        items = data.items || [];
+        renderList();
+      })
+      .catch(e => {
+        listErr.textContent = e.message || "Failed to load conversations";
+        listErr.classList.remove("hidden");
+      });
+  }
+
+  // --- Thread ---
+  function renderThread(data){
+    threadEl.innerHTML = "";
+    const messages = data.messages || [];
+    const other = (data.participants||[]).find(p => p.id !== meId);
+    titleEl.textContent = other?.name || "Conversation";
+
+    messages.sort((a,b)=>new Date(a.sentAt)-new Date(b.sentAt));
+    messages.forEach(m=>{
+      const mine = m.authorId === meId;
+      const wrap = document.createElement("div");
+      wrap.className = "flex "+(mine?"justify-end":"justify-start");
+      const bubble = document.createElement("div");
+      bubble.className = "max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-soft "+(mine?"bubble-out":"bubble-in");
+      bubble.innerHTML = `
+        <div class="whitespace-pre-wrap break-words">${escapeHtml(m.text||"")}</div>
+        <div class="mt-1 text-[10px] opacity-70 ${mine?"text-white":"text-gray-500"}">${new Date(m.sentAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
+      `;
+      wrap.appendChild(bubble);
+      threadEl.appendChild(wrap);
+    });
+    threadEl.scrollTop = threadEl.scrollHeight;
+  }
+
+  function fetchThread(id){
+    activeId = id;
+    threadErr.classList.add("hidden");
+    postJSON(CFG.threadUrl, { conversationId: id })
+      .then(data => renderThread(data))
+      .catch(e => {
+        threadErr.textContent = e.message || "Failed to load conversation";
+        threadErr.classList.remove("hidden");
+      });
+  }
+
+  // --- Send ---
+  function sendMessage(){
+    const text = (draftEl.value||"").trim();
+    if(!activeId || !text) return;
+    // optimistic render
+    renderThread({
+      participants: [{id:"other", name:titleEl.textContent}],
+      messages: [...documentOptimisticMessages(), { id:"optimistic-"+Date.now(), authorId: meId, text, sentAt:new Date().toISOString() }]
+    });
+    draftEl.value = "";
+    sendEl.disabled = true;
+    postJSON(CFG.sendUrl, { conversationId: activeId, text })
+      .then(()=> fetchThread(activeId))
+      .catch(()=> fetchThread(activeId))
+      .finally(()=> sendEl.disabled = false);
+  }
+
+  function documentOptimisticMessages(){
+    // best-effort: we don't parse DOM back; just return empty and rely on refetch after send
+    return [];
+  }
+
+  // --- Events ---
+  btnPrev.onclick = () => { if(page>1) { page--; fetchList(page); } };
+  btnNext.onclick = () => { if(page<totalPages) { page++; fetchList(page); } };
+  btnRefresh.onclick = () => fetchList(page);
+  searchEl.addEventListener("input", e=>{
+    const q = (e.target.value||"").toLowerCase();
+    const filtered = items.filter(i=> (i.name||"").toLowerCase().includes(q) || (i.lastLine||"").toLowerCase().includes(q));
+    const backup = items; items = filtered; renderList(); items = backup;
+  });
+  draftEl.addEventListener("keydown", e=>{
+    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+  });
+  sendEl.onclick = sendMessage;
+
+  // --- Helpers ---
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[s]));
+  }
+
+  // Initial load
+  fetchList(1);
+})();
+</script>
+</body>
+</html>
+<!-- [WIDGET_HTML_END] -->
