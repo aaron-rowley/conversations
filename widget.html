@@ -10,20 +10,29 @@
       --vq-bg:#0b0b10; --vq-card:#121218; --vq-border:#1c1c25;
       --vq-text:#e9e9f2; --vq-muted:#a0a6b3;
       --vq-accent:#ff7a00;
-      --vq-bubble-out-start:#ff7a00; --vq-bubble-out-end:#ff922b; --vq-bubble-out-text:#0b0b10;
-      --vq-bubble-in:#1b1b24; --vq-bubble-in-text:#e9e9f2;
+      --vq-out-start:#ff7a00; --vq-out-end:#ff922b; --vq-out-text:#0b0b10;
+      --vq-in:#1b1b24; --vq-in-text:#e9e9f2;
       --vq-hover:#161621; --vq-glow:0 8px 24px rgba(255,122,0,.18);
     }
     *{ scrollbar-width:thin; scrollbar-color:#2a2a36 transparent }
     *::-webkit-scrollbar{ width:10px; height:10px } *::-webkit-scrollbar-thumb{ background:#272732; border-radius:999px }
-    .bubble-out{ background:linear-gradient(135deg,var(--vq-bubble-out-start),var(--vq-bubble-out-end)); color:var(--vq-bubble-out-text); border-top-right-radius:.5rem; box-shadow:var(--vq-glow) }
-    .bubble-in{ background:var(--vq-bubble-in); color:var(--vq-bubble-in-text); border-top-left-radius:.5rem }
+    .bubble-out{ background:linear-gradient(135deg,var(--vq-out-start),var(--vq-out-end)); color:var(--vq-out-text); border-top-right-radius:.5rem; box-shadow:var(--vq-glow) }
+    .bubble-in{ background:var(--vq-in); color:var(--vq-in-text); border-top-left-radius:.5rem }
     .bubble-system{ display:inline-block; background:#1f1f2a; color:var(--vq-muted); font-size:11px; padding:4px 10px; border-radius:999px; margin:6px auto; border:1px solid var(--vq-border) }
+
     .chip{ border:1px solid var(--vq-border); background:#151522; color:var(--vq-muted) }
     .chip-sms{ border-color:#2aa198; color:#7fdbca }
     .chip-email{ border-color:#6d28d9; color:#c4b5fd }
     .chip-fbig{ border-color:#2563eb; color:#93c5fd }
     .chip-wa{ border-color:#22c55e; color:#86efac }
+
+    .badge{ font-size:10px; padding:2px 6px; border-radius:8px; display:inline-flex; align-items:center; gap:6px }
+    .badge-sms{ background:#12302c; color:#7fdbca; border:1px solid #2aa198 }
+    .badge-email{ background:#1b1240; color:#c4b5fd; border:1px solid #6d28d9 }
+    .badge-fbig{ background:#0f2246; color:#93c5fd; border:1px solid #2563eb }
+    .badge-wa{ background:#0e2a16; color:#86efac; border:1px solid #22c55e }
+    .badge-generic{ background:#252533; color:#cbd5e1; border:1px solid #3b3b4a }
+
     .shadow-soft{ box-shadow:0 10px 30px rgba(0,0,0,.25) } .vq-border{ border-color:var(--vq-border) }
     .btn{ transition:transform .06s ease } .btn:active{ transform:translateY(1px) }
   </style>
@@ -67,7 +76,6 @@
 
       <!-- Right: thread -->
       <section class="col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden shadow-soft border vq-border flex flex-col" style="background:var(--vq-card)">
-        <!-- Title + single filter -->
         <div class="px-4 py-3 border-b vq-border flex items-center justify-between gap-3">
           <div class="font-semibold truncate" id="thread-title">Open a conversation</div>
           <label class="flex items-center gap-2 text-[12px]">
@@ -76,11 +84,9 @@
           </label>
         </div>
 
-        <!-- Thread -->
         <div id="thread-error" class="hidden px-4 pt-3 text-sm text-red-400"></div>
         <div id="thread" class="flex-1 overflow-auto p-4 space-y-2"></div>
 
-        <!-- Composer -->
         <div class="p-3 border-t vq-border">
           <div class="rounded-xl p-2 border vq-border" style="background:#151522">
             <textarea id="draft" rows="3" class="w-full resize-none border-0 focus:outline-none text-sm" style="background:transparent; color:var(--vq-text)" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
@@ -128,6 +134,7 @@
   let items = [], itemsBackup = [];
   let activeId = null;
   const meId = "me";
+  let lastThread = null; // keep last thread locally so the toggle doesn't refetch
   let hideSystem = false;
 
   // Utils
@@ -147,7 +154,7 @@
   }
   function escapeHtml(str){ return String(str||"").replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[s])); }
 
-  // Channel helpers (for badge in bubble)
+  // Direction + platform badge (inside bubble)
   function channelLabel(type){
     if(type === "TYPE_SMS") return "SMS";
     if(type === "TYPE_EMAIL") return "Email";
@@ -155,23 +162,32 @@
     if(type && String(type).includes("WHATSAPP")) return "WA";
     return "Msg";
   }
-  function channelClass(type){
-    if(type === "TYPE_SMS") return "chip chip-sms";
-    if(type === "TYPE_EMAIL") return "chip chip-email";
-    if(type && String(type).includes("FACEBOOK")) return "chip chip-fbig";
-    if(type && String(type).includes("WHATSAPP")) return "chip chip-wa";
-    return "chip";
+  function badgeClass(type){
+    if(type === "TYPE_SMS") return "badge badge-sms";
+    if(type === "TYPE_EMAIL") return "badge badge-email";
+    if(type && String(type).includes("FACEBOOK")) return "badge badge-fbig";
+    if(type && String(type).includes("WHATSAPP")) return "badge badge-wa";
+    return "badge badge-generic";
   }
   function platformBadge(m){
     const t = m.channel || m.platform || m.messageType;
-    return `<span class="${channelClass(t)} text-[10px] px-1.5 py-0.5 rounded-md">${channelLabel(t)}</span>`;
-  }
-  function isSystemMsg(m){
-    const mt = (m.messageType || "").toString();
-    return m.isSystem === true || mt.startsWith("TYPE_ACTIVITY_");
+    const arrow = m.direction === "inbound" ? "⬅︎" : "➡︎";
+    return `<span class="${badgeClass(t)}"><span>${arrow}</span><span>${channelLabel(t)}</span></span>`;
   }
 
-  // List
+  // Robust system detection (covers GHL shapes)
+  function isSystemMsg(m){
+    if (m.isSystem === true) return true;
+    const mt = (m.messageType || "").toString();
+    if (mt.startsWith("TYPE_ACTIVITY_")) return true;
+    const numT = Number(m.type);
+    if ([25,26,27,28,29,30,31,32].includes(numT)) return true; // common activity codes
+    // fallback: no direction/author but has text like "Opportunity created"
+    if (!m.direction && !m.authorId && (m.text || m.title)) return true;
+    return false;
+  }
+
+  /* ===== List ===== */
   function renderList(){
     listEl.innerHTML = "";
     items.forEach(it => {
@@ -182,6 +198,9 @@
       const initials = (it.name||"VQ").split(" ").slice(0,2).map(x=>x[0]?.toUpperCase()).join("");
       const avatar = `<div class="h-8 w-8 rounded-xl flex items-center justify-center text-xs font-semibold" style="background:#202030; color:var(--vq-text)">${escapeHtml(initials||"VQ")}</div>`;
 
+      // optional small chip under name (direction + platform) if your list webhook includes channel/direction
+      const chip = it.channel ? `<span class="${badgeClass(it.channel)}">${it.direction==="inbound"?"⬅︎":"➡︎"} ${channelLabel(it.channel)}</span>` : "";
+
       row.innerHTML = `
         ${avatar}
         <div class="flex-1 min-w-0">
@@ -189,7 +208,8 @@
             <div class="font-medium truncate">${escapeHtml(it.name||"Conversation")}</div>
             <div class="text-[10px] text-[var(--vq-muted)] whitespace-nowrap">${timeAgo(it.updatedAt)}</div>
           </div>
-          <div class="flex items-center gap-2 mt-0.5">
+          <div class="flex items-center gap-2 mt-1">
+            ${chip}
             <div class="text-sm text-[var(--vq-muted)] truncate">${escapeHtml(it.lastLine||"")}</div>
           </div>
         </div>
@@ -218,8 +238,9 @@
       });
   }
 
-  // Thread
+  /* ===== Thread ===== */
   function renderThread(data){
+    lastThread = data; // cache so the toggle can re-render instantly
     threadEl.innerHTML = "";
     const messages = (data.messages || []).slice().sort((a,b)=>new Date(a.sentAt)-new Date(b.sentAt));
     const other = (data.participants||[]).find(p => p.id !== meId);
@@ -267,14 +288,14 @@
       });
   }
 
-  // Send
+  /* ===== Send ===== */
   function sendMessage(){
     const text = (draftEl.value||"").trim();
     if(!activeId || !text) return;
     // optimistic
     renderThread({
       participants: [{id:"contact", name:titleEl.textContent}],
-      messages: [{ id:"optimistic-"+Date.now(), authorId: meId, text, sentAt:new Date().toISOString(), channel:"TYPE_SMS" }]
+      messages: [{ id:"optimistic-"+Date.now(), authorId: meId, text, sentAt:new Date().toISOString(), channel:"TYPE_SMS", direction:"outbound" }]
     });
     draftEl.value = ""; sendEl.disabled = true;
     postJSON(CFG.sendUrl, { conversationId: activeId, text })
@@ -283,23 +304,27 @@
       .finally(()=> sendEl.disabled = false);
   }
 
-  // Events
+  /* ===== Events ===== */
   btnPrev.onclick = () => { if(page>1) { page--; fetchList(page); } };
   btnNext.onclick = () => { if(page<totalPages) { page++; fetchList(page); } };
   btnRefresh.onclick = () => fetchList(page);
+
   searchEl.addEventListener("input", e=>{
     const q = (e.target.value||"").toLowerCase();
     items = !q ? itemsBackup.slice() :
       itemsBackup.filter(i=> (i.name||"").toLowerCase().includes(q) || (i.lastLine||"").toLowerCase().includes(q));
     renderList();
   });
+
   draftEl.addEventListener("keydown", e=>{
     if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
   });
   sendEl.onclick = sendMessage;
+
+  // Toggle works instantly using cached thread
   hideSystemEl.addEventListener("change", ()=>{
     hideSystem = hideSystemEl.checked;
-    if(activeId) fetchThread(activeId);
+    if(lastThread) renderThread(lastThread);
   });
 
   // Init
