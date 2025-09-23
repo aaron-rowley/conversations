@@ -1,0 +1,360 @@
+// ========================= VISQUANTA MESSAGING – START =========================
+// Paste this whole file as a new React component, e.g. src/components/ConversationsUI.tsx
+// Then import and render <ConversationsUI /> somewhere in your app.
+// Ctrl+F anchors for quick editing:
+//   [CFG_TOP] – configure webhook URLs & theme
+//   [SCHEMA] – response + payload contracts to wire in n8n
+//   [LIST_FETCH] – list webhook call
+//   [THREAD_FETCH] – thread webhook call
+//   [SEND_MSG] – send webhook call
+//   [STYLE] – iPhone-style bubbles & layout tweaks
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { Phone, Send, RefreshCw, Loader2, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+
+// [CFG_TOP] ———— Edit these to your n8n webhooks
+const CFG = {
+  listUrl: "/api/webhooks/conversations/list", // POST {page, pageSize}
+  threadUrl: "/api/webhooks/conversations/thread", // POST {conversationId, before?, after?}
+  sendUrl: "/api/webhooks/conversations/send", // POST {conversationId, text}
+  pageSize: 20,
+  // Brand/theme (defaults chosen to look like iMessage but with VisQuanta twist)
+  color: {
+    primary: "#5E6AD2", // outgoing bubble fill
+    primaryText: "#ffffff",
+    incoming: "#E9ECEF", // incoming bubble fill
+    incomingText: "#111827",
+    accent: "#111827",
+  },
+};
+
+// [SCHEMA] ———— Contracts you can mirror in n8n
+// LIST (POST listUrl)
+// req: { page: number, pageSize: number }
+// res: {
+//   page: number,
+//   totalPages: number,
+//   items: Array<{
+//     id: string,
+//     name: string,              // e.g., contact name
+//     lastLine: string,          // first line of most recent message
+//     updatedAt: string,         // ISO datetime
+//     unreadCount?: number,
+//   }>
+// }
+// THREAD (POST threadUrl)
+// req: { conversationId: string, before?: string, after?: string }
+// res: {
+//   conversationId: string,
+//   participants: Array<{ id: string, name: string }>,
+//   messages: Array<{
+//     id: string,
+//     authorId: string,
+//     authorName?: string,
+//     text: string,
+//     sentAt: string, // ISO datetime
+//   }>
+// }
+// SEND (POST sendUrl)
+// req: { conversationId: string, text: string }
+// res: { ok: true, messageId: string, sentAt: string }
+
+// ———— Types
+interface ListItem { id: string; name: string; lastLine: string; updatedAt: string; unreadCount?: number }
+interface ThreadMessage { id: string; authorId: string; authorName?: string; text: string; sentAt: string }
+interface ThreadRes { conversationId: string; participants: Array<{id: string; name: string}>; messages: ThreadMessage[] }
+
+function timeAgo(iso: string) {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d`;
+  return d.toLocaleDateString();
+}
+
+async function postJSON<T>(url: string, body: any) : Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include", // carry cookies if your auth needs it
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} on ${url}`);
+  return res.json();
+}
+
+export default function ConversationsUI() {
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
+  const [items, setItems] = useState<ListItem[]>([]);
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [thread, setThread] = useState<ThreadRes | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState<string | null>(null);
+
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const meId = "me"; // map to your agent/user id in n8n response
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  useEffect(() => { scrollToBottom(); }, [thread?.messages.length]);
+
+  // On load: fetch page 1
+  useEffect(() => { (async () => { await fetchList(1); })(); }, []);
+
+  // [LIST_FETCH]
+  async function fetchList(nextPage: number) {
+    try {
+      setListLoading(true); setListError(null);
+      const data = await postJSON<{page:number; totalPages:number; items:ListItem[]}>(CFG.listUrl, { page: nextPage, pageSize: CFG.pageSize });
+      setItems(data.items);
+      setPage(data.page);
+      setTotalPages(data.totalPages);
+    } catch (e: any) {
+      setListError(e?.message ?? "Failed to load conversations");
+    } finally {
+      setListLoading(false);
+    }
+  }
+
+  // [THREAD_FETCH]
+  async function fetchThread(conversationId: string) {
+    try {
+      setThreadLoading(true); setThreadError(null);
+      setActiveId(conversationId);
+      const data = await postJSON<ThreadRes>(CFG.threadUrl, { conversationId });
+      // sort by sentAt asc to render oldest first
+      data.messages.sort((a,b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+      setThread(data);
+    } catch (e: any) {
+      setThreadError(e?.message ?? "Failed to load conversation");
+    } finally {
+      setThreadLoading(false);
+    }
+  }
+
+  // [SEND_MSG]
+  async function sendMessage() {
+    const text = draft.trim();
+    if (!activeId || !text) return;
+    setSending(true);
+
+    // optimistic UI
+    const optimistic: ThreadMessage = {
+      id: `optimistic-${Date.now()}`,
+      authorId: meId,
+      authorName: "You",
+      text,
+      sentAt: new Date().toISOString(),
+    };
+    setThread(prev => prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev);
+    setDraft("");
+    scrollToBottom();
+
+    try {
+      const res = await postJSON<{ ok: boolean; messageId: string; sentAt: string }>(CFG.sendUrl, { conversationId: activeId, text });
+      // Reconcile optimistic id (simple approach: refetch thread)
+      await fetchThread(activeId);
+    } catch (e) {
+      // rollback on error
+      setThread(prev => prev ? { ...prev, messages: prev.messages.filter(m => m.id !== optimistic.id) } : prev);
+      alert((e as any)?.message ?? "Failed to send message");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  const activeName = useMemo(() => {
+    if (!activeId) return "";
+    const fromList = items.find(i => i.id === activeId)?.name;
+    const fromThread = thread?.participants.find(p => p.id !== meId)?.name;
+    return fromList || fromThread || "Conversation";
+  }, [activeId, items, thread]);
+
+  return (
+    <div className="w-full h-[calc(100vh-2rem)] grid grid-cols-12 gap-4 p-4">
+      {/* Left column: conversation list */}
+      <Card className="col-span-12 md:col-span-4 lg:col-span-3 rounded-2xl overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5"/> Conversations</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => fetchList(page)} title="Refresh">
+              <RefreshCw className={cn("h-4 w-4", listLoading && "animate-spin")} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="px-3 pb-3">
+            <Input placeholder="Search (client side)" onChange={(e) => {
+              const q = e.target.value.toLowerCase();
+              // simple client filter; for server search, wire another webhook
+              const base = (window as any).__listBackup ?? items;
+              if (!(window as any).__listBackup) (window as any).__listBackup = items;
+              const filtered = base.filter((i: ListItem) => i.name.toLowerCase().includes(q) || i.lastLine.toLowerCase().includes(q));
+              setItems(q ? filtered : base);
+            }} />
+          </div>
+
+          {listError && (
+            <div className="px-4 pb-3 text-sm text-red-600 flex items-center gap-2"><AlertCircle className="h-4 w-4"/> {listError}</div>
+          )}
+
+          <ScrollArea className="h-[70vh]">
+            {listLoading ? (
+              <div className="p-4 space-y-3">
+                {Array.from({ length: 8 }).map((_,i) => (
+                  <div key={i} className="animate-pulse h-14 rounded-xl bg-muted" />
+                ))}
+              </div>
+            ) : (
+              <ul className="divide-y">
+                {items.map(item => (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => fetchThread(item.id)}
+                      className={cn(
+                        "w-full px-4 py-3 flex items-start gap-3 hover:bg-muted/60 transition text-left",
+                        activeId === item.id && "bg-muted"
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-medium truncate">{item.name}</div>
+                          <div className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(item.updatedAt)}</div>
+                        </div>
+                        <div className="text-sm text-muted-foreground truncate">{item.lastLine}</div>
+                      </div>
+                      {!!item.unreadCount && (
+                        <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">{item.unreadCount}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+
+          <div className="flex items-center justify-between p-3 border-t">
+            <Button variant="outline" size="sm" disabled={page<=1 || listLoading} onClick={() => fetchList(page-1)}>
+              <ChevronLeft className="h-4 w-4 mr-1"/> Prev
+            </Button>
+            <div className="text-xs text-muted-foreground">Page {page} / {totalPages}</div>
+            <Button variant="outline" size="sm" disabled={page>=totalPages || listLoading} onClick={() => fetchList(page+1)}>
+              Next <ChevronRight className="h-4 w-4 ml-1"/>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Right column: thread */}
+      <Card className="col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden">
+        <CardHeader>
+          <CardTitle className="truncate">{activeId ? activeName : "Open a conversation"}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col h-[80vh]">
+          <div className="flex-1">
+            <ScrollArea className="h-[60vh] pr-2">
+              {threadLoading && (
+                <div className="p-4 space-y-3">
+                  {Array.from({ length: 6 }).map((_,i) => (
+                    <div key={i} className={cn("animate-pulse h-10 w-2/3 rounded-2xl", i%2===0 ? "bg-muted ml-auto" : "bg-muted")}/>
+                  ))}
+                </div>
+              )}
+              {threadError && (
+                <div className="p-4 text-sm text-red-600 flex items-center gap-2"><AlertCircle className="h-4 w-4"/> {threadError}</div>
+              )}
+
+              {!threadLoading && thread?.messages && (
+                <div className="p-4 space-y-2">
+                  {thread.messages.map(m => {
+                    const mine = m.authorId === meId;
+                    return (
+                      <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}> 
+                        <motion.div initial={{opacity:0, y:6}} animate={{opacity:1, y:0}} transition={{duration:0.15}} 
+                          className={cn("max-w-[80%] px-4 py-2 rounded-2xl text-sm shadow-sm",
+                            mine ? "bubble-outgoing" : "bubble-incoming")}
+                        >
+                          <div className="whitespace-pre-wrap break-words">{m.text}</div>
+                          <div className={cn("mt-1 text-[10px] opacity-70", mine ? "text-white" : "text-muted-foreground")}>{new Date(m.sentAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</div>
+                        </motion.div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          {/* Composer */}
+          <div className="mt-3 border rounded-xl p-2">
+            <Textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+              className="resize-none border-0 focus-visible:ring-0 focus:outline-none"
+              rows={3}
+            />
+            <div className="flex items-center justify-between mt-2">
+              <div className="text-xs text-muted-foreground">Press Enter to send</div>
+              <Button onClick={sendMessage} disabled={!activeId || !draft.trim() || sending}>
+                {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin"/> : <Send className="h-4 w-4 mr-2"/>}
+                Send
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* [STYLE] – iPhone-like bubbles via CSS vars */}
+      <style>{`
+        .bubble-outgoing { background: ${CFG.color.primary}; color: ${CFG.color.primaryText}; border-top-right-radius: .4rem; }
+        .bubble-incoming { background: ${CFG.color.incoming}; color: ${CFG.color.incomingText}; border-top-left-radius: .4rem; }
+      `}</style>
+    </div>
+  );
+}
+
+// ========================= VISQUANTA MESSAGING – END =========================
+
+// ———— n8n Webhook Notes (no leading '=' in expressions)
+// 1) LIST Webhook
+//    Expect: { "page": {{$json["page"]}}, "pageSize": {{$json["pageSize"]}} }
+//    Return JSON exactly as [SCHEMA] for LIST.
+//
+// 2) THREAD Webhook
+//    Expect: { "conversationId": {{$json["conversationId"]}} }
+//    Return JSON exactly as [SCHEMA] for THREAD.
+//
+// 3) SEND Webhook
+//    Expect: { "conversationId": {{$json["conversationId"]}}, "text": {{$json["text"]}} }
+//    Return: { ok: true, messageId: "...", sentAt: new Date().toISOString() }
+//
+// CORS/Headers: if you need auth, add a middleware that sets cookies or injects an Authorization header in fetch above.
+// Retry/backoff: productionize by wrapping postJSON with retry on 429/5xx.
