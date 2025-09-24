@@ -3,332 +3,217 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>VisQuanta — Conversations</title>
+  <title>VisQuanta — Conversation List</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     :root{
-      --vq-bg:#0b0b10; --vq-card:#121218; --vq-border:#1c1c25;
-      --vq-text:#e9e9f2; --vq-muted:#a0a6b3;
-      --vq-accent:#ff7a00;
-      --vq-out-start:#ff7a00; --vq-out-end:#ff922b; --vq-out-text:#0b0b10;
-      --vq-in:#1b1b24; --vq-in-text:#e9e9f2;
-      --vq-hover:#161621; --vq-glow:0 8px 24px rgba(255,122,0,.18);
+      --bg:#0b0b10; --card:#121218; --border:#1c1c25;
+      --text:#e9e9f2; --muted:#a0a6b3; --accent:#ff7a00;
     }
-    *{ scrollbar-width:thin; scrollbar-color:#2a2a36 transparent }
-    *::-webkit-scrollbar{ width:10px; height:10px } *::-webkit-scrollbar-thumb{ background:#272732; border-radius:999px }
-    .bubble-out{ background:linear-gradient(135deg,var(--vq-out-start),var(--vq-out-end)); color:var(--vq-out-text); border-top-right-radius:.5rem; box-shadow:var(--vq-glow) }
-    .bubble-in{ background:var(--vq-in); color:var(--vq-in-text); border-top-left-radius:.5rem }
-    .bubble-system{ display:inline-block; background:#1f1f2a; color:var(--vq-muted); font-size:11px; padding:4px 10px; border-radius:999px; margin:6px auto; border:1px solid var(--vq-border) }
-
-    .chip{ border:1px solid var(--vq-border); background:#151522; color:var(--vq-muted) }
-    .chip-sms{ border-color:#2aa198; color:#7fdbca }
-    .chip-email{ border-color:#6d28d9; color:#c4b5fd }
-    .chip-fbig{ border-color:#2563eb; color:#93c5fd }
-    .chip-wa{ border-color:#22c55e; color:#86efac }
-
-    .badge{ font-size:10px; padding:2px 6px; border-radius:8px; display:inline-flex; align-items:center; gap:6px }
-    .badge-sms{ background:#12302c; color:#7fdbca; border:1px solid #2aa198 }
-    .badge-email{ background:#1b1240; color:#c4b5fd; border:1px solid #6d28d9 }
-    .badge-fbig{ background:#0f2246; color:#93c5fd; border:1px solid #2563eb }
-    .badge-wa{ background:#0e2a16; color:#86efac; border:1px solid #22c55e }
-    .badge-generic{ background:#252533; color:#cbd5e1; border:1px solid #3b3b4a }
-
-    .shadow-soft{ box-shadow:0 10px 30px rgba(0,0,0,.25) } .vq-border{ border-color:var(--vq-border) }
-    .btn{ transition:transform .06s ease } .btn:active{ transform:translateY(1px) }
+    body{ background:var(--bg); color:var(--text) }
+    .vq-card{ background:var(--card); border:1px solid var(--border) }
+    .vq-input{ background:#151522; border:1px solid var(--border); color:var(--text) }
+    .chip{ border:1px solid var(--border); background:#151522; color:var(--muted) }
+    .badge{ font-size:10px; padding:2px 6px; border-radius:8px; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); background:#252533; color:#cbd5e1 }
+    .btn{ border:1px solid var(--border); background:#151522; color:var(--text); transition:transform .06s ease }
+    .btn:active{ transform:translateY(1px) }
   </style>
 </head>
-<body class="min-h-screen w-full" style="background:var(--vq-bg); color:var(--vq-text)">
-
-  <!-- Top bar -->
-  <header class="w-full px-6 pt-4 pb-3">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="h-8 w-8 rounded-xl" style="background:var(--vq-accent)"></div>
-        <div class="text-sm uppercase tracking-widest text-[var(--vq-muted)]">VisQuanta</div>
+<body class="min-h-screen">
+  <main class="max-w-3xl mx-auto p-4">
+    <section class="vq-card rounded-2xl overflow-hidden">
+      <!-- Header -->
+      <div class="px-4 py-3 flex items-center justify-between border-b border-[var(--border)]">
+        <div class="font-semibold">Conversations</div>
+        <button id="refresh" class="btn px-3 py-1.5 rounded-lg text-sm">Refresh</button>
       </div>
-      <div class="text-xs text-[var(--vq-muted)]">Conversations</div>
-    </div>
-  </header>
 
-  <!-- App area (full height) -->
-  <main id="app" class="px-6 pb-6">
-    <div class="grid grid-cols-12 gap-4" style="height: calc(100vh - 88px);">
-      <!-- Left: list -->
-      <section class="col-span-12 md:col-span-4 lg:col-span-3 rounded-2xl overflow-hidden shadow-soft border vq-border flex flex-col" style="background:var(--vq-card)">
-        <div class="px-4 py-3 flex items-center justify-between border-b vq-border">
-          <div class="font-semibold flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 6.75c0 8.284 6.716 15 15 15h1.5a2.25 2.25 0 002.25-2.25v-.495a1.125 1.125 0 00-.852-1.09l-4.423-1.106a1.125 1.125 0 00-1.09.285l-.97.97a12.04 12.04 0 01-6.313-6.313l.97-.97a1.125 1.125 0 00.285-1.09L6.585 2.85A1.125 1.125 0 005.495 2H5A2.25 2.25 0 002.75 4.25v2.5z"/></svg>
-            Conversations
-          </div>
-          <button id="btn-refresh" class="btn text-xs px-3 py-1.5 rounded-lg border vq-border" style="background:#151522">Refresh</button>
+      <!-- Controls -->
+      <div class="px-4 pt-3 pb-2 space-y-3">
+        <!-- Tabs -->
+        <div class="flex items-center gap-2 text-sm">
+          <button data-tab="unread" class="tab active px-3 py-1.5 rounded-lg btn">Unread <span id="c-unread" class="ml-2 text-[10px] px-2 py-0.5 rounded-full" style="background:var(--accent); color:var(--bg)">0</span></button>
+          <button data-tab="starred" class="tab px-3 py-1.5 rounded-lg btn">Starred</button>
+          <button data-tab="all" class="tab px-3 py-1.5 rounded-lg btn">All</button>
+          <div class="flex-1"></div>
+          <!-- Channel filter -->
+          <select id="channel" class="vq-input rounded-lg px-2 py-1.5 text-sm">
+            <option value="">All Channels</option>
+            <option value="sms">SMS</option>
+            <option value="fb">FB/IG</option>
+            <option value="ig">Instagram</option>
+            <option value="email">Email</option>
+          </select>
         </div>
-        <div class="p-3">
-          <input id="search" class="w-full rounded-lg px-3 py-2 text-sm border vq-border" style="background:#151522; color:var(--vq-text)" placeholder="Search…" />
-        </div>
-        <div id="list-error" class="hidden px-4 pb-2 text-sm text-red-400"></div>
-        <div id="list" class="flex-1 overflow-auto divide-y divide-[var(--vq-border)]"></div>
-        <div class="p-3 border-t vq-border flex items-center justify-between">
-          <button id="prev" class="btn text-xs px-3 py-1.5 rounded-lg border vq-border disabled:opacity-50" style="background:#151522">Prev</button>
-          <div class="text-[10px] text-[var(--vq-muted)]"><span id="page">1</span>/<span id="pages">1</span></div>
-          <button id="next" class="btn text-xs px-3 py-1.5 rounded-lg border vq-border disabled:opacity-50" style="background:#151522">Next</button>
-        </div>
-      </section>
+        <!-- Search -->
+        <input id="search" class="vq-input w-full rounded-lg px-3 py-2 text-sm" placeholder="Search name or phone…" />
+      </div>
 
-      <!-- Right: thread -->
-      <section class="col-span-12 md:col-span-8 lg:col-span-9 rounded-2xl overflow-hidden shadow-soft border vq-border flex flex-col" style="background:var(--vq-card)">
-        <div class="px-4 py-3 border-b vq-border flex items-center justify-between gap-3">
-          <div class="font-semibold truncate" id="thread-title">Open a conversation</div>
-          <label class="flex items-center gap-2 text-[12px]">
-            <input id="hide-system" type="checkbox" class="accent-[var(--vq-accent)]">
-            <span class="text-[var(--vq-muted)]">Hide system messages</span>
-          </label>
-        </div>
+      <!-- Error -->
+      <div id="error" class="px-4 text-sm text-red-400 hidden"></div>
 
-        <div id="thread-error" class="hidden px-4 pt-3 text-sm text-red-400"></div>
-        <div id="thread" class="flex-1 overflow-auto p-4 space-y-2"></div>
+      <!-- List -->
+      <div id="list" class="divide-y divide-[var(--border)]"></div>
 
-        <div class="p-3 border-t vq-border">
-          <div class="rounded-xl p-2 border vq-border" style="background:#151522">
-            <textarea id="draft" rows="3" class="w-full resize-none border-0 focus:outline-none text-sm" style="background:transparent; color:var(--vq-text)" placeholder="Type a message… (Enter to send, Shift+Enter for newline)"></textarea>
-            <div class="mt-2 flex items-center justify-between">
-              <div class="text-[10px] text-[var(--vq-muted)]">Press Enter to send</div>
-              <button id="send" class="btn px-3 py-1.5 text-sm rounded-lg text-[var(--vq-bg)]" style="background:var(--vq-accent)">Send</button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+      <!-- Footer / Pagination -->
+      <div class="px-4 py-3 flex items-center justify-between border-t border-[var(--border)]">
+        <button id="prev" class="btn px-3 py-1.5 rounded-lg text-sm disabled:opacity-50">Prev</button>
+        <div class="text-[11px] text-[var(--muted)]">Page <span id="page">1</span> / <span id="pages">1</span> • <span id="total">0</span> total</div>
+        <button id="next" class="btn px-3 py-1.5 rounded-lg text-sm disabled:opacity-50">Next</button>
+      </div>
+    </section>
   </main>
 
 <script>
 (function(){
+  // ---- Config via URL params ----
   const p = new URLSearchParams(location.search);
   const CFG = {
-    listUrl: p.get("listUrl"),
-    threadUrl: p.get("threadUrl"),
-    sendUrl: p.get("sendUrl"),
-    locationId: p.get("locationId"),
+    listUrl: p.get("listUrl"),               // required (your n8n webhook)
+    locationId: p.get("locationId") || "",   // required
     authHeader: p.get("authHeader") || "Authorization",
     authToken: p.get("authToken") || "",
-    pageSize: +(p.get("pageSize") || 20)
+    pageSize: +(p.get("pageSize") || 10),
   };
 
-  // Elements
-  const listEl = document.getElementById("list");
-  const listErr = document.getElementById("list-error");
-  const threadEl = document.getElementById("thread");
-  const threadErr = document.getElementById("thread-error");
-  const titleEl = document.getElementById("thread-title");
-  const draftEl = document.getElementById("draft");
-  const sendEl = document.getElementById("send");
-  const btnPrev = document.getElementById("prev");
-  const btnNext = document.getElementById("next");
-  const pageEl = document.getElementById("page");
-  const pagesEl = document.getElementById("pages");
-  const btnRefresh = document.getElementById("btn-refresh");
+  // ---- DOM ----
+  const listEl   = document.getElementById("list");
+  const errEl    = document.getElementById("error");
+  const pageEl   = document.getElementById("page");
+  const pagesEl  = document.getElementById("pages");
+  const totalEl  = document.getElementById("total");
   const searchEl = document.getElementById("search");
-  const hideSystemEl = document.getElementById("hide-system");
+  const chanEl   = document.getElementById("channel");
+  const prevEl   = document.getElementById("prev");
+  const nextEl   = document.getElementById("next");
+  const refreshEl= document.getElementById("refresh");
+  const tabEls   = Array.from(document.querySelectorAll(".tab"));
+  const cUnread  = document.getElementById("c-unread");
 
-  // State
-  let page = 1, totalPages = 1;
-  let items = [], itemsBackup = [];
-  let activeId = null;
-  const meId = "me";
-  let lastThread = null; // keep last thread locally so the toggle doesn't refetch
-  let hideSystem = false;
+  // ---- State ----
+  let tab = "unread";
+  let page = 1;
+  let totalPages = 1;
+  let total = 0;
+  let q = "";
+  let channel = "";
+  let loading = false;
 
-  // Utils
-  function timeAgo(iso){
-    const d = new Date(iso||Date.now()), diff = Date.now()-d.getTime();
-    const s = Math.floor(diff/1000); if(s<60) return s+"s";
-    const m = Math.floor(s/60); if(m<60) return m+"m";
-    const h = Math.floor(m/60); if(h<24) return h+"h";
-    const days = Math.floor(h/24); if(days<7) return days+"d";
-    return d.toLocaleDateString();
+  // ---- Helpers ----
+  function headers(){
+    const h = {"Content-Type":"application/json"};
+    if (CFG.authToken) h[CFG.authHeader] = CFG.authToken;
+    return h;
   }
   function postJSON(url, body){
-    const headers = {"Content-Type":"application/json"};
-    if(CFG.authToken) headers[CFG.authHeader] = CFG.authToken;
-    return fetch(url, { method:"POST", headers, body: JSON.stringify(Object.assign({ locationId: CFG.locationId }, body)) })
-      .then(r => { if(!r.ok) throw new Error("HTTP "+r.status+" on "+url); return r.json(); });
+    return fetch(url, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({ locationId: CFG.locationId, ...body })
+    }).then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); });
   }
-  function escapeHtml(str){ return String(str||"").replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[s])); }
+  const timeAgo = (iso) => {
+    if (!iso) return "";
+    const t = Date.parse(iso), diff = Math.max(0, Date.now()-t);
+    const m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
+    if (m < 1) return "now";
+    if (m < 60) return `${m}m`;
+    if (h < 24) return `${h}h`;
+    return `${d}d`;
+  };
+  const esc = (s) => String(s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
 
-  // Direction + platform badge (inside bubble)
-  function channelLabel(type){
-    if(type === "TYPE_SMS") return "SMS";
-    if(type === "TYPE_EMAIL") return "Email";
-    if(type && String(type).includes("FACEBOOK")) return "FB/IG";
-    if(type && String(type).includes("WHATSAPP")) return "WA";
-    return "Msg";
-  }
-  function badgeClass(type){
-    if(type === "TYPE_SMS") return "badge badge-sms";
-    if(type === "TYPE_EMAIL") return "badge badge-email";
-    if(type && String(type).includes("FACEBOOK")) return "badge badge-fbig";
-    if(type && String(type).includes("WHATSAPP")) return "badge badge-wa";
-    return "badge badge-generic";
-  }
-  function platformBadge(m){
-    const t = m.channel || m.platform || m.messageType;
-    const arrow = m.direction === "inbound" ? "⬅︎" : "➡︎";
-    return `<span class="${badgeClass(t)}"><span>${arrow}</span><span>${channelLabel(t)}</span></span>`;
-  }
-
-  // Robust system detection (covers GHL shapes)
-  function isSystemMsg(m){
-    if (m.isSystem === true) return true;
-    const mt = (m.messageType || "").toString();
-    if (mt.startsWith("TYPE_ACTIVITY_")) return true;
-    const numT = Number(m.type);
-    if ([25,26,27,28,29,30,31,32].includes(numT)) return true; // common activity codes
-    // fallback: no direction/author but has text like "Opportunity created"
-    if (!m.direction && !m.authorId && (m.text || m.title)) return true;
-    return false;
-  }
-
-  /* ===== List ===== */
-  function renderList(){
+  function renderItems(items){
     listEl.innerHTML = "";
-    items.forEach(it => {
-      const row = document.createElement("button");
-      row.className = "w-full text-left px-4 py-3 transition flex gap-3 items-start hover:bg-[var(--vq-hover)] "+(activeId===it.id?"bg-[var(--vq-hover)]":"");
-      row.onclick = () => fetchThread(it.id);
+    items.forEach(it=>{
+      const row = document.createElement("div");
+      row.className = "px-4 py-3 flex items-start gap-3 hover:bg-[#161621] transition";
 
-      const initials = (it.name||"VQ").split(" ").slice(0,2).map(x=>x[0]?.toUpperCase()).join("");
-      const avatar = `<div class="h-8 w-8 rounded-xl flex items-center justify-center text-xs font-semibold" style="background:#202030; color:var(--vq-text)">${escapeHtml(initials||"VQ")}</div>`;
+      const initials = (it.initials || (it.name||"VQ").split(" ").slice(0,2).map(s=>s[0]?.toUpperCase()).join("")) || "VQ";
+      const avatar = `<div class="h-8 w-8 rounded-xl flex items-center justify-center text-xs font-semibold" style="background:#202030; color:var(--text)">${esc(initials)}</div>`;
 
-      // optional small chip under name (direction + platform) if your list webhook includes channel/direction
-      const chip = it.channel ? `<span class="${badgeClass(it.channel)}">${it.direction==="inbound"?"⬅︎":"➡︎"} ${channelLabel(it.channel)}</span>` : "";
+      const chip = it.channel ? `<span class="badge">${it.channel}</span>` : "";
 
       row.innerHTML = `
         ${avatar}
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between gap-3">
-            <div class="font-medium truncate">${escapeHtml(it.name||"Conversation")}</div>
-            <div class="text-[10px] text-[var(--vq-muted)] whitespace-nowrap">${timeAgo(it.updatedAt)}</div>
+            <div class="font-medium truncate">${esc(it.name || "Conversation")}</div>
+            <div class="text-[10px] text-[var(--muted)] whitespace-nowrap">${esc(it.lastMessageAgo || timeAgo(it.lastMessageAt))}</div>
           </div>
           <div class="flex items-center gap-2 mt-1">
             ${chip}
-            <div class="text-sm text-[var(--vq-muted)] truncate">${escapeHtml(it.lastLine||"")}</div>
+            <div class="text-sm text-[var(--muted)] truncate">${esc(it.previewShort || it.preview || "")}</div>
           </div>
         </div>
-        ${it.unreadCount?`<span class="ml-2 text-[10px] px-2 py-0.5 rounded-full" style="background:var(--vq-accent); color:var(--vq-bg)">${it.unreadCount}</span>`:""}
+        ${it.unreadCount ? `<span class="ml-2 text-[10px] px-2 py-0.5 rounded-full" style="background:var(--accent); color:var(--bg)">${it.unreadCount}</span>` : ""}
       `;
       listEl.appendChild(row);
     });
-    pageEl.textContent = String(page);
-    pagesEl.textContent = String(totalPages);
-    btnPrev.disabled = page<=1; btnNext.disabled = page>=totalPages;
   }
 
-  function fetchList(nextPage){
-    listErr.classList.add("hidden");
-    postJSON(CFG.listUrl, { page: nextPage, pageSize: CFG.pageSize })
-      .then(data => {
-        page = data.page || nextPage;
-        totalPages = data.totalPages || 1;
-        items = data.items || [];
-        itemsBackup = items.slice();
-        renderList();
-      })
-      .catch(e => {
-        listErr.textContent = e.message || "Failed to load conversations";
-        listErr.classList.remove("hidden");
-      });
+  // ---- Fetch & wire ----
+  function load(pageArg){
+    if (loading) return;
+    loading = true;
+    errEl.classList.add("hidden");
+    postJSON(CFG.listUrl, {
+      tab, page: pageArg, pageSize: CFG.pageSize,
+      q, channel
+    }).then(data=>{
+      page        = data.page || pageArg;
+      totalPages  = Math.max(1, data.totalPages || Math.ceil((data.total||0) / (data.perPage||CFG.pageSize)));
+      total       = data.total || 0;
+
+      // counts (for the tab badge)
+      const unreadCount = (data.countsByChannel ? Object.values(data.countsByChannel).reduce((a,b)=>a+b,0) : data.items?.length) || 0;
+      cUnread.textContent = unreadCount;
+
+      renderItems(data.items || []);
+      pageEl.textContent  = String(page);
+      pagesEl.textContent = String(totalPages);
+      totalEl.textContent = String(total);
+      prevEl.disabled = page <= 1;
+      nextEl.disabled = page >= totalPages;
+    }).catch(err=>{
+      errEl.textContent = err.message || "Failed to load";
+      errEl.classList.remove("hidden");
+    }).finally(()=> loading = false);
   }
 
-  /* ===== Thread ===== */
-  function renderThread(data){
-    lastThread = data; // cache so the toggle can re-render instantly
-    threadEl.innerHTML = "";
-    const messages = (data.messages || []).slice().sort((a,b)=>new Date(a.sentAt)-new Date(b.sentAt));
-    const other = (data.participants||[]).find(p => p.id !== meId);
-    titleEl.textContent = other?.name || "Conversation";
-
-    messages.forEach(m=>{
-      if(hideSystem && isSystemMsg(m)) return;
-
-      if(isSystemMsg(m)){
-        const wrap = document.createElement("div");
-        wrap.className = "flex justify-center";
-        const chip = document.createElement("div");
-        chip.className = "bubble-system";
-        chip.textContent = m.text || m.title || "Activity";
-        threadEl.appendChild(wrap).appendChild(chip);
-        return;
-      }
-
-      const mine = m.authorId === meId;
-      const wrap = document.createElement("div");
-      wrap.className = "flex "+(mine?"justify-end":"justify-start");
-      const bubble = document.createElement("div");
-      bubble.className = "relative max-w-[80%] px-4 py-2 rounded-2xl text-sm "+(mine?"bubble-out":"bubble-in");
-      bubble.innerHTML = `
-        <div class="whitespace-pre-wrap break-words">${escapeHtml(m.text||"")}</div>
-        <div class="mt-1 text-[10px] flex items-center gap-2 ${mine?"":"text-[var(--vq-muted)]"}">
-          ${platformBadge(m)}
-          <span>${new Date(m.sentAt).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>
-        </div>
-      `;
-      wrap.appendChild(bubble);
-      threadEl.appendChild(wrap);
+  // ---- Events ----
+  tabEls.forEach(el=>{
+    el.addEventListener("click", ()=>{
+      tabEls.forEach(x=>x.classList.remove("active"));
+      el.classList.add("active");
+      tab = el.dataset.tab;
+      page = 1;
+      load(page);
     });
-    threadEl.scrollTop = threadEl.scrollHeight;
-  }
+  });
 
-  function fetchThread(id){
-    activeId = id;
-    threadErr.classList.add("hidden");
-    postJSON(CFG.threadUrl, { conversationId: id })
-      .then(data => renderThread(data))
-      .catch(e => {
-        threadErr.textContent = e.message || "Failed to load conversation";
-        threadErr.classList.remove("hidden");
-      });
-  }
-
-  /* ===== Send ===== */
-  function sendMessage(){
-    const text = (draftEl.value||"").trim();
-    if(!activeId || !text) return;
-    // optimistic
-    renderThread({
-      participants: [{id:"contact", name:titleEl.textContent}],
-      messages: [{ id:"optimistic-"+Date.now(), authorId: meId, text, sentAt:new Date().toISOString(), channel:"TYPE_SMS", direction:"outbound" }]
-    });
-    draftEl.value = ""; sendEl.disabled = true;
-    postJSON(CFG.sendUrl, { conversationId: activeId, text })
-      .then(()=> fetchThread(activeId))
-      .catch(()=> fetchThread(activeId))
-      .finally(()=> sendEl.disabled = false);
-  }
-
-  /* ===== Events ===== */
-  btnPrev.onclick = () => { if(page>1) { page--; fetchList(page); } };
-  btnNext.onclick = () => { if(page<totalPages) { page++; fetchList(page); } };
-  btnRefresh.onclick = () => fetchList(page);
-
+  let tSearch;
   searchEl.addEventListener("input", e=>{
-    const q = (e.target.value||"").toLowerCase();
-    items = !q ? itemsBackup.slice() :
-      itemsBackup.filter(i=> (i.name||"").toLowerCase().includes(q) || (i.lastLine||"").toLowerCase().includes(q));
-    renderList();
+    clearTimeout(tSearch);
+    tSearch = setTimeout(()=>{
+      q = (e.target.value || "").trim();
+      page = 1;
+      load(page);
+    }, 200);
   });
 
-  draftEl.addEventListener("keydown", e=>{
-    if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); sendMessage(); }
-  });
-  sendEl.onclick = sendMessage;
-
-  // Toggle works instantly using cached thread
-  hideSystemEl.addEventListener("change", ()=>{
-    hideSystem = hideSystemEl.checked;
-    if(lastThread) renderThread(lastThread);
+  chanEl.addEventListener("change", e=>{
+    channel = e.target.value;
+    page = 1;
+    load(page);
   });
 
-  // Init
-  fetchList(1);
+  document.getElementById("prev").onclick = ()=> { if(page>1) load(--page); };
+  document.getElementById("next").onclick = ()=> { if(page<totalPages) load(++page); };
+  refreshEl.onclick = ()=> load(page);
+
+  // ---- Boot ----
+  load(1);
 })();
 </script>
 </body>
